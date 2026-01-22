@@ -1,6 +1,6 @@
-from app.core.llm.gemini import GeminiClient
+from app.core.llm.embedding_client import EmbeddingClient
 
 class EmbeddingService:
     @staticmethod
     def embed(text: str) -> list[float]:
-        return GeminiClient.embed(text)
+        return EmbeddingClient.embed(text)
