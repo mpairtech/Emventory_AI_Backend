@@ -1,13 +1,19 @@
 import google.genai as genai
 from app.core.config import settings
 
-#genai.configure(api_key=settings.GEMINI_API_KEY)
+
+client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
 class GeminiClient:
     @staticmethod
     def embed(text: str) -> list[float]:
-        res = genai.embed_content(
-            model="models/text-embedding-004",
-            content=text
+        """
+        Returns a vector embedding for the input text using Gemini embeddings API.
+        """
+       
+        response = client.models.embed_content(
+            model="text-embedding-004",
+            contents=text  
         )
-        return res["embedding"]
+        
+        return response.embeddings[0].values

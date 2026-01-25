@@ -13,9 +13,10 @@ def index_product(payload: dict, db: Session = Depends(get_db)):
 @router.post("/semantic")
 def semantic_search(payload: dict, db: Session = Depends(get_db)):
     results = SearchService.semantic_search(db, payload["query"])
-    return {
-        "results": [
-            {"product_id": r.product_id, "score": float(r.score)}
-            for r in results
-        ]
-    }
+    #return {
+        #"results": [
+            #{"product_id": r.product_id, "score": float(r.score)}
+            #for r in results
+        #]
+   # }
+    return {"results": results}

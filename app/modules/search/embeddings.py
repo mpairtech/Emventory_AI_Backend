@@ -1,6 +1,6 @@
-from app.core.llm.embedding_client import EmbeddingClient
+from app.core.llm.gemini import GeminiClient  # <-- use Gemini instead of OpenAI
 
 class EmbeddingService:
     @staticmethod
     def embed(text: str) -> list[float]:
-        return EmbeddingClient.embed(text)
+        return GeminiClient.embed(text)  # <-- calls Gemini API
