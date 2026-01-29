@@ -1,5 +1,77 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.responses import JSONResponse
 from app.api.v1.router import router
+from app.core.exceptions import (
+    SearchServiceException,
+    EmbeddingGenerationError,
+    VectorSearchError,
+    DatabaseError,
+    LLMGenerationError,
+    RateLimitError,
+    ProductNotFoundError
+)
+import logging
 
-app = FastAPI(title="AI Search Service")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="AI Based Search")
+
+@app.exception_handler(RateLimitError)
+async def rate_limit_exception_handler(request: Request, exc: RateLimitError):
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={"error": "Rate limit exceeded", "detail": str(exc)}
+    )
+
+@app.exception_handler(EmbeddingGenerationError)
+async def embedding_exception_handler(request: Request, exc: EmbeddingGenerationError):
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"error": "Embedding service error", "detail": str(exc)}
+    )
+
+@app.exception_handler(LLMGenerationError)
+async def llm_exception_handler(request: Request, exc: LLMGenerationError):
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"error": "AI generation service error", "detail": str(exc)}
+    )
+
+@app.exception_handler(VectorSearchError)
+async def vector_search_exception_handler(request: Request, exc: VectorSearchError):
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"error": "Search error", "detail": str(exc)}
+    )
+
+@app.exception_handler(DatabaseError)
+async def database_exception_handler(request: Request, exc: DatabaseError):
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"error": "Database error", "detail": str(exc)}
+    )
+
+@app.exception_handler(ProductNotFoundError)
+async def product_not_found_exception_handler(request: Request, exc: ProductNotFoundError):
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={"error": "Product not found", "detail": str(exc)}
+    )
+
+@app.exception_handler(SearchServiceException)
+async def search_service_exception_handler(request: Request, exc: SearchServiceException):
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"error": "Service error", "detail": str(exc)}
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"error": "Internal server error", "detail": "An unexpected error occurred"}
+    )
+
 app.include_router(router, prefix="/api/v1")

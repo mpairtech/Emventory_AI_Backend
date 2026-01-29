@@ -1,0 +1,117 @@
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from app.db.session import get_db
+from app.modules.search.service import SearchService
+
+router = APIRouter(prefix="/search", tags=["AI Search"])
+
+@router.post("/index")
+def index_product(payload: dict, db: Session = Depends(get_db)):
+    SearchService.index_product(db, payload)
+    return {"status": "indexed"}
+
+@router.post("/semantic")
+def semantic_search(payload: dict, db: Session = Depends(get_db)):
+    results = SearchService.semantic_search(db, payload["query"])
+    #return {
+        #"results": [
+            #{"product_id": r.product_id, "score": float(r.score)}
+            #for r in results
+        #]
+   # }
+    return {"results": results}
+import google.genai as genai
+from app.core.config import settings
+
+
+client = genai.Client(api_key=settings.GEMINI_API_KEY)
+
+class GeminiClient:
+    @staticmethod
+    def embed(text: str) -> list[float]:
+        """
+        Returns a vector embedding for the input text using Gemini embeddings API.
+        """
+       
+        response = client.models.embed_content(
+            model="text-embedding-004",
+            contents=text  
+        )
+        
+        return response.embeddings[0].valuesfrom sqlalchemy import text
+
+class VectorStore:
+    @staticmethod
+    def search(db, embedding):
+        # Convert Python list to PostgreSQL vector format
+        embedding_str = '[' + ','.join(map(str, embedding)) + ']'
+        
+        sql = text("""
+            SELECT product_id,
+                   name,
+                   category,
+                   price,
+                   1 - (embedding <=> CAST(:q AS vector)) AS score
+            FROM product_vectors
+            ORDER BY embedding <=> CAST(:q AS vector)
+            LIMIT 10
+        """)
+        
+        results = db.execute(sql, {"q": embedding_str}).fetchall()
+        
+        # Format results
+        return [
+            {
+                "product_id": row[0],
+                "name": row[1],
+                "category": row[2],
+                "price": float(row[3]),
+                "similarity_score": float(row[4])
+            }
+            for row in results
+        ]from sqlalchemy import Column, BigInteger, Text, Float
+from pgvector.sqlalchemy import Vector
+from sqlalchemy.orm import declarative_base
+
+Base = declarative_base()
+
+class ProductVector(Base):
+    __tablename__ = "product_vectors"
+
+    product_id = Column(BigInteger, primary_key=True)
+    embedding = Column(Vector(768))
+    name = Column(Text)
+    category = Column(Text)
+    price = Column(Float)
+from app.db.models.vector import ProductVector
+
+class SearchRepository:
+    @staticmethod
+    def upsert(db, vector: ProductVector):
+        db.merge(vector)
+        db.commit()
+from app.modules.search.embeddings import EmbeddingService
+from app.db.models.vector import ProductVector
+from app.modules.search.repository import SearchRepository
+from app.core.vector.pgvector import VectorStore
+
+class SearchService:
+
+    @staticmethod
+    def index_product(db, payload):
+        text = f"{payload['name']} category {payload['category']} price {payload['price']}"
+        embedding = EmbeddingService.embed(text)
+
+        vector = ProductVector(
+            product_id=payload["product_id"],
+            embedding=embedding,
+            name=payload["name"],
+            category=payload["category"],
+            price=payload["price"]
+        )
+        SearchRepository.upsert(db, vector)
+
+    @staticmethod
+    def semantic_search(db, query: str):
+        embedding = EmbeddingService.embed(query)
+        return VectorStore.search(db, embedding)

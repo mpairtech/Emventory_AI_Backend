@@ -4,15 +4,20 @@ from sqlalchemy import text
 from app.db.session import get_db
 from app.modules.search.service import SearchService
 from app.modules.search.embeddings import EmbeddingService
-
+from app.core.exceptions import (
+    SearchServiceException,
+    EmbeddingGenerationError,
+    VectorSearchError,
+    DatabaseError,
+    LLMGenerationError,
+    RateLimitError
+)
 from app.api.v1.schemas import (
     ProductIndexRequest, 
     SearchRequest, 
-    RAGResponse,
-    ErrorResponse
+    RAGResponse
 )
 import logging
-
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,72 +27,150 @@ router = APIRouter(prefix="/search", tags=["AI Search"])
 
 @router.post("/index", status_code=status.HTTP_201_CREATED)
 def index_product(request: ProductIndexRequest, db: Session = Depends(get_db)):
-    """Index a product for search with validation"""
     try:
-       
         payload = request.model_dump()  
         SearchService.index_product(db, payload)
         
-        logger.info(f"Successfully indexed product: {request.product_id}")
         return {
             "status": "indexed",
             "product_id": request.product_id,
             "message": f"Product '{request.name}' indexed successfully"
         }
     
-    except Exception as e:
-        logger.error(f"Error indexing product {request.product_id}: {str(e)}")
+    except RateLimitError as e:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(e)
+        )
+    
+    except EmbeddingGenerationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Embedding service error: {str(e)}"
+        )
+    
+    except DatabaseError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to index product: {str(e)}"
+            detail=f"Database error: {str(e)}"
+        )
+    
+    except SearchServiceException as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+    
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred"
         )
 
 
 @router.post("/semantic")
 def semantic_search(request: SearchRequest, db: Session = Depends(get_db)):
-    """Vector similarity search - returns matching products"""
     try:
         results = SearchService.semantic_search(db, request.query)
-        
-        logger.info(f"Semantic search for '{request.query}' returned {len(results)} results")
         return {"results": results, "query": request.query}
     
-    except Exception as e:
-        logger.error(f"Error in semantic search: {str(e)}")
+    except RateLimitError as e:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(e)
+        )
+    
+    except EmbeddingGenerationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Embedding service error: {str(e)}"
+        )
+    
+    except VectorSearchError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Search failed: {str(e)}"
+            detail=f"Search error: {str(e)}"
+        )
+    
+    except DatabaseError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
+        )
+    
+    except SearchServiceException as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+    
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred"
         )
 
 
 @router.post("/rag", response_model=RAGResponse)
 def rag_search(request: SearchRequest, db: Session = Depends(get_db)):
-    """RAG search - returns AI-generated answer with source products"""
     try:
         result = SearchService.rag_search(db, request.query)
-        
-        logger.info(f"RAG search for '{request.query}' completed successfully")
         return result
     
-    except Exception as e:
-        logger.error(f"Error in RAG search: {str(e)}")
+    except RateLimitError as e:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(e)
+        )
+    
+    except EmbeddingGenerationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Embedding service error: {str(e)}"
+        )
+    
+    except VectorSearchError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"RAG search failed: {str(e)}"
+            detail=f"Search error: {str(e)}"
+        )
+    
+    except DatabaseError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
+        )
+    
+    except LLMGenerationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"AI generation error: {str(e)}"
+        )
+    
+    except SearchServiceException as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+    
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred"
         )
 
 
 @router.post("/debug")
 def debug_search(request: SearchRequest, db: Session = Depends(get_db)):
-    """Debug: See detailed similarity scores and matching"""
     try:
         query = request.query
         query_embedding = EmbeddingService.embed(query)
         
-        # Convert to PostgreSQL format
         embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
         
-        # Get detailed metrics
         sql = text("""
             SELECT 
                 product_id,
@@ -104,7 +187,6 @@ def debug_search(request: SearchRequest, db: Session = Depends(get_db)):
         
         results = db.execute(sql, {"q": embedding_str}).fetchall()
         
-        # Analyze word overlap
         query_words = set(query.lower().split())
         
         debug_results = []
@@ -125,12 +207,29 @@ def debug_search(request: SearchRequest, db: Session = Depends(get_db)):
                 "total_product_words": len(product_words)
             })
         
-        logger.info(f"Debug search for '{query}' completed")
         return {
             "query": query,
             "query_words": list(query_words),
             "results": debug_results
         }
+    
+    except RateLimitError as e:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(e)
+        )
+    
+    except EmbeddingGenerationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Embedding service error: {str(e)}"
+        )
+    
+    except DatabaseError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
+        )
     
     except Exception as e:
         logger.error(f"Error in debug search: {str(e)}")

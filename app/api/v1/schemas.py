@@ -11,7 +11,7 @@ class ProductIndexRequest(BaseModel):
     @classmethod
     def validate_not_empty(cls, v: str) -> str:
         if not v or v.strip() == "":
-            raise ValueError("Field cannot be empty or whitespace")
+            raise ValueError("Field can't be empty ")
         return v.strip()
 
 class SearchRequest(BaseModel):
@@ -21,7 +21,7 @@ class SearchRequest(BaseModel):
     @classmethod
     def validate_query(cls, v: str) -> str:
         if not v or v.strip() == "":
-            raise ValueError("Query cannot be empty or whitespace")
+            raise ValueError("Query can't be empty ")
         return v.strip()
 
 class ProductResponse(BaseModel):
