@@ -5,6 +5,7 @@ __pycache__/
 *.so
 .Python
 scripts/
+test_gemini_rag.py
 
 # Virtual Environment
 venv/

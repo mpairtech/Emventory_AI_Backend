@@ -62,7 +62,7 @@ class GeminiClient:
     )
     def generate(prompt: str, context: str) -> str:
         if not prompt or not prompt.strip():
-            raise LLMGenerationError("Cannot generate response for empty prompt")
+            raise LLMGenerationError("Can't generate response for empty prompt")
         
         try:
             full_prompt = f"""You are a helpful product assistant. Based on the following product information, answer the user's query naturally and helpfully.
@@ -75,7 +75,7 @@ User Query: {prompt}
 Provide a helpful answer based on the products above. If recommending products, explain why they match the query."""
 
             response = client.models.generate_content(
-                model="gemini-2.0-flash-exp",
+                model="models/gemini-flash-latest",
                 contents=full_prompt
             )
             
