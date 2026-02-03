@@ -8,7 +8,7 @@ if defined _OLD_CODEPAGE (
     "%SystemRoot%\System32\chcp.com" 65001 > nul
 )
 
-set VIRTUAL_ENV=C:\Users\SkyTech\Desktop\Emventory_AI\venv
+set VIRTUAL_ENV=D:\mariya\AI\Emventory_AI_Backend\venv
 
 if not defined PROMPT set PROMPT=$P$G
 

@@ -1,0 +1,42 @@
+# AI Search Backend — আপনার pgvector_db আলাদা জায়গায় চালু থাকলে শুধু app
+# .env এ DB_HOST, DB_PORT=5433, DB_NAME=Search, DB_USER, DB_PASSWORD, GEMINI_API_KEY সেট করুন
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: pgvector_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: sAkawat321
+      POSTGRES_DB: Search
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgvector_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: emventory_ai_app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      DB_HOST: pgvector_db
+      DB_PORT: "5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgvector_data:
+    # আপনার postgres যেখানে চালু (host এ 5433 এ) সেখানে কানেক্ট করতে:
+    # Windows/Mac: DB_HOST=host.docker.internal, DB_PORT=5433
+    # Linux: DB_HOST=172.17.0.1 বা host IP, DB_PORT=5433
+    # একই Docker network এ থাকলে: DB_HOST=pgvector_db, DB_PORT=5432

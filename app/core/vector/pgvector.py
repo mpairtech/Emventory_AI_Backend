@@ -8,33 +8,53 @@ logger = logging.getLogger(__name__)
 class VectorStore:
     
     @staticmethod
-    def search(db, embedding):
+    def search(db, embedding, org_id=None):
+        """Search by embedding. If org_id is set, only products for that org are returned (MySQL org-based)."""
         try:
             if not embedding or len(embedding) == 0:
                 raise VectorSearchError("Embedding cannot be empty")
             
             embedding_str = '[' + ','.join(map(str, embedding)) + ']'
+            params = {"q": embedding_str}
             
-            sql = text("""
-                SELECT product_id,
+            where_clause = "WHERE org_id = :org_id" if org_id else ""
+            if org_id:
+                params["org_id"] = org_id
+            
+            sql = text(f"""
+                SELECT org_id, product_id,
                        name,
                        category,
+                       brand,
+                       description,
+                       specifications,
                        price,
+                       rating,
+                       review_count,
+                       status,
                        1 - (embedding <=> CAST(:q AS vector)) AS score
                 FROM product_vectors
+                {where_clause}
                 ORDER BY embedding <=> CAST(:q AS vector)
                 LIMIT 10
             """)
             
-            results = db.execute(sql, {"q": embedding_str}).fetchall()
+            results = db.execute(sql, params).fetchall()
             
             return [
                 {
-                    "product_id": row[0],
-                    "name": row[1],
-                    "category": row[2],
-                    "price": float(row[3]),
-                    "similarity_score": float(row[4])
+                    "org_id": row[0],
+                    "product_id": row[1],
+                    "name": row[2],
+                    "category": row[3],
+                    "brand": row[4],
+                    "description": row[5],
+                    "specifications": row[6],
+                    "price": float(row[7]) if row[7] else None,
+                    "rating": float(row[8]) if row[8] else None,
+                    "review_count": int(row[9]) if row[9] else None,
+                    "status": row[10],
+                    "similarity_score": float(row[11])
                 }
                 for row in results
             ]

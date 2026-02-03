@@ -11,11 +11,31 @@ from app.core.exceptions import (
     ProductNotFoundError
 )
 import logging
+from sqlalchemy import text
 
-logging.basicConfig(level=logging.INFO)
+from app.core.config import settings
+from app.db.session import engine
+from app.db.models.vector import Base
+
+logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO))
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AI Based Search")
+
+@app.on_event("startup")
+async def init_db():
+    """Initialize database: create pgvector extension and tables if they don't exist."""
+    try:
+        # Create pgvector extension
+        with engine.begin() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        
+        # Create tables
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database initialized: pgvector extension and product_vectors table ready.")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}", exc_info=True)
+        # Don't fail startup - allow manual initialization if needed
 
 @app.exception_handler(RateLimitError)
 async def rate_limit_exception_handler(request: Request, exc: RateLimitError):

@@ -12,7 +12,8 @@ class SearchRepository:
     def upsert(db: Session, vector: ProductVector):
         try:
             existing = db.query(ProductVector).filter(
-                ProductVector.product_id == vector.product_id
+                ProductVector.org_id == vector.org_id,
+                ProductVector.product_id == vector.product_id,
             ).first()
             
             if existing:

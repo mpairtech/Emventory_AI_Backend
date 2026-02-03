@@ -8,9 +8,10 @@ scripts/
 test_gemini_rag.py
 
 # Virtual Environment
-venv/
+venv
 env/
 ENV/
+docs
 
 # IDE
 .vscode/
