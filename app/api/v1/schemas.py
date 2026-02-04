@@ -1,43 +1,15 @@
-from pydantic import BaseModel, Field, field_validator
-from typing import Optional, Literal
-
-# --- NestJS integration: single AI service, model-based invoke ---
-AI_MODELS = Literal["rag", "semantic", "embedding", "index"]
-
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Optional
 
 # Max text length for embedding to avoid token limit / cost (Gemini)
 EMBEDDING_TEXT_MAX_LENGTH = 8192
 QUERY_MAX_LENGTH = 500
 
 
-class AIInvokeInput(BaseModel):
-    """Input for POST /api/v1/ai/invoke. Fields used depend on `model`."""
-    org_id: Optional[str] = Field(None, max_length=255, description="Org scope (MySQL org_id). For rag/semantic: filter by org; for index: required.")
-    query: Optional[str] = Field(None, min_length=1, max_length=QUERY_MAX_LENGTH, description="For model=rag or model=semantic")
-    text: Optional[str] = Field(None, min_length=1, max_length=EMBEDDING_TEXT_MAX_LENGTH, description="For model=embedding")
-    product_id: Optional[str] = Field(None, max_length=50, description="Product ID (MySQL product_id)")
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    category: Optional[str] = Field(None, min_length=1, max_length=100)
-    price: Optional[float] = Field(None, gt=0)
-
-    @field_validator("name", "category", mode="after")
-    @classmethod
-    def strip_and_reject_empty(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
-            return v
-        s = (v or "").strip()
-        if not s:
-            raise ValueError("Field cannot be only whitespace")
-        return s
-
-
-class AIInvokeRequest(BaseModel):
-    """NestJS hits AI Backend with model + input. One service, many models."""
-    model: AI_MODELS = Field(..., description="Which AI capability to run: rag, semantic, embedding, index")
-    input: AIInvokeInput = Field(..., description="Model-specific input (query, text, or product fields)")
-
-
 class ProductIndexRequest(BaseModel):
+    """Only these fields are accepted. Extra fields in request body are rejected (422)."""
+    model_config = ConfigDict(extra="forbid")
+
     org_id: str = Field(..., min_length=1, max_length=255, description="Org ID (MySQL organization.org_id)")
     product_id: str = Field(..., min_length=1, max_length=50, description="Product ID (MySQL product.product_id)")
     name: str = Field(..., min_length=1, max_length=255, description="Product name")
@@ -67,7 +39,25 @@ class ProductIndexRequest(BaseModel):
         s = v.strip()
         return s if s else None
 
+class ListIndexedRequest(BaseModel):
+    """Body for POST /search/indexed/list. Only these fields accepted; extra fields rejected (422)."""
+    model_config = ConfigDict(extra="forbid")
+
+    org_id: Optional[str] = Field(None, max_length=255, description="Filter by org_id")
+    limit: int = Field(100, ge=1, le=500, description="Max items to return")
+
+
+class GenerateKeyRequest(BaseModel):
+    """Input to generate API key. Key = HMAC(API_SECRET, input). Only 'input' accepted."""
+    model_config = ConfigDict(extra="forbid")
+
+    input: str = Field(..., min_length=1, max_length=500, description="e.g. org_id — key will be generated from this")
+
+
 class SearchRequest(BaseModel):
+    """Semantic/RAG search body. Only query and org_id accepted; extra fields rejected (422)."""
+    model_config = ConfigDict(extra="forbid")
+
     query: str = Field(..., min_length=1, max_length=QUERY_MAX_LENGTH, description="Search query")
     org_id: Optional[str] = Field(None, max_length=255, description="If set, search only this org's products (MySQL org_id)")
     

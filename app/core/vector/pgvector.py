@@ -2,8 +2,29 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError, OperationalError
 from app.core.exceptions import VectorSearchError, DatabaseError
 import logging
+import math
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_float(v):
+    if v is None:
+        return None
+    try:
+        f = float(v)
+        return None if (math.isnan(f) or math.isinf(f)) else f
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_int(v):
+    if v is None:
+        return None
+    try:
+        x = int(float(v))
+        return None if (math.isnan(x) or math.isinf(x)) else x
+    except (TypeError, ValueError):
+        return None
 
 class VectorStore:
     
@@ -50,11 +71,11 @@ class VectorStore:
                     "brand": row[4],
                     "description": row[5],
                     "specifications": row[6],
-                    "price": float(row[7]) if row[7] else None,
-                    "rating": float(row[8]) if row[8] else None,
-                    "review_count": int(row[9]) if row[9] else None,
+                    "price": _safe_float(row[7]),
+                    "rating": _safe_float(row[8]),
+                    "review_count": _safe_int(row[9]),
                     "status": row[10],
-                    "similarity_score": float(row[11])
+                    "similarity_score": _safe_float(row[11]) or 0.0,
                 }
                 for row in results
             ]

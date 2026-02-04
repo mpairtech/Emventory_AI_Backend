@@ -20,7 +20,13 @@ class SearchRepository:
                 existing.embedding = vector.embedding
                 existing.name = vector.name
                 existing.category = vector.category
+                existing.brand = vector.brand
+                existing.description = vector.description
+                existing.specifications = vector.specifications
                 existing.price = vector.price
+                existing.rating = vector.rating
+                existing.review_count = vector.review_count
+                existing.status = vector.status
             else:
                 db.add(vector)
             
