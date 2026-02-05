@@ -65,14 +65,23 @@ class GeminiClient:
             raise LLMGenerationError("Can't generate response for empty prompt")
         
         try:
-            full_prompt = f"""You are a helpful product assistant. Based on the following product information, answer the user's query naturally and helpfully.
+            full_prompt = f"""You are a helpful ecommerce product assistant.
+You must answer the user's query **only** using the product information given below.
+If the products are not relevant or the information is insufficient, clearly say that you cannot find a good match.
 
-Product Information:
+== PRODUCT INFORMATION (CONTEXT) ==
 {context}
 
-User Query: {prompt}
+== USER QUERY ==
+{prompt}
 
-Provide a helpful answer based on the products above. If recommending products, explain why they match the query."""
+== INSTRUCTIONS ==
+- Only use facts present in the product information above. Do NOT invent specifications, prices, ratings, or brands.
+- If there are no clearly relevant products, say that you could not find any good matches.
+- When recommending products:
+  - List 1–5 products as bullet points.
+  - Mention the product name, key attributes (category, brand, important specs), and why it matches the query.
+- Keep the answer concise, clear, and user-friendly."""
 
             response = client.models.generate_content(
                 model="models/gemini-flash-latest",

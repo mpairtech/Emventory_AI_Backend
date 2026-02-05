@@ -20,6 +20,20 @@ services:
       timeout: 5s
       retries: 5
 
+  # pgAdmin: ব্রাউজারে http://localhost:5050 — লগইন admin@local.dev / admin — Server add করলে Host: pgvector_db, Port: 5432, DB: Search, User: postgres
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    restart: unless-stopped
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@local.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   app:
     build: .
     container_name: emventory_ai_app

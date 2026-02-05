@@ -42,14 +42,36 @@ def _generate_key(user_input: str) -> str:
 
 # API_SECRET is required. Client must send X-Key-Input (e.g. org_id) and X-API-Key = HMAC(API_SECRET, X-Key-Input)
 def verify_api_key(request: Request):
-    key_input = request.headers.get("X-Key-Input", "").strip()
-    key = request.headers.get("X-API-Key") or request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+    """
+    Verify API key coming from client.
+    This extra logging is only to help local debugging; remove or reduce in production.
+    """
+    key_input = (request.headers.get("X-Key-Input") or "").strip()
+    raw_key_header = request.headers.get("X-API-Key")
+    auth_header = request.headers.get("Authorization", "")
+
+    key = (raw_key_header or auth_header.replace("Bearer ", "")).strip()
+
     if not key_input:
+        logger.warning("API key verification failed: missing X-Key-Input header")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing X-Key-Input header (e.g. org_id). API key is generated from this input.",
         )
+
     expected_key = _generate_key(key_input)
+
+    # Debug log: only lengths + prefix/suffix to avoid full secret exposure
+    logger.info(
+        "verify_api_key: key_input='%s', received_len=%s, expected_len=%s, "
+        "received_prefix='%s', expected_prefix='%s'",
+        key_input,
+        len(key) if key else 0,
+        len(expected_key),
+        (key or "")[:6],
+        expected_key[:6],
+    )
+
     if not key or not hmac.compare_digest(key, expected_key):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API key")
 
@@ -72,7 +94,7 @@ def generate_key(
     Returns API key for the given input. Key = HMAC(API_SECRET, input).
     To call this: send X-Key-Input: "generate" and X-API-Key: HMAC(API_SECRET, "generate").
     """
-    return {"input": body.input, "api_key": _generate_key(body.input)}
+    return {"input": body.input, "token": _generate_key(body.input)}
 
 
 def _safe_float(v):
@@ -101,14 +123,8 @@ def _safe_int(v):
         return None
 
 
-@router.get("/indexed", summary="List indexed products (pgvector)")
-def list_indexed(
-    org_id: str | None = Query(None, description="Filter by org_id (MySQL org_id)"),
-    limit: int = Query(100, ge=1, le=500),
-    _: None = Depends(verify_api_key),
-    db: Session = Depends(get_db),
-):
-    """Check what's stored in pgvector product_vectors. Returns all indexed fields (no embedding)."""
+def _list_indexed_products(org_id: str | None, limit: int, db: Session):
+    """Helper function to list indexed products."""
     try:
         q = select(
             ProductVector.org_id,
@@ -154,6 +170,21 @@ def list_indexed(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
+@router.post(
+    "/indexed",
+    summary="List indexed products (POST with JSON body)",
+    response_model=None,
+    status_code=200
+)
+def list_indexed_post_direct(
+    body: ListIndexedRequest,
+    _: None = Depends(verify_api_key),
+    db: Session = Depends(get_db),
+):
+    """List indexed products accepting org_id and limit in JSON body."""
+    return _list_indexed_products(org_id=body.org_id, limit=body.limit, db=db)
+
+
 @router.post("/indexed/list", summary="List indexed products (POST with JSON body)")
 def list_indexed_post(
     body: ListIndexedRequest,
@@ -161,7 +192,7 @@ def list_indexed_post(
     db: Session = Depends(get_db),
 ):
     """Same as GET /indexed but accepts org_id and limit in JSON body. Use this in Postman with POST + body."""
-    return list_indexed(org_id=body.org_id, limit=body.limit, db=db)
+    return _list_indexed_products(org_id=body.org_id, limit=body.limit, db=db)
 
 
 @router.post("/index", status_code=status.HTTP_201_CREATED)
