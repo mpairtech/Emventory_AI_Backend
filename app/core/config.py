@@ -17,9 +17,9 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str
     LOG_LEVEL: str = "INFO"
 
-    # Optional: secret to generate API keys from user input. Key = HMAC(API_SECRET, user_input).
-    # If set, client must send X-Key-Input (e.g. org_id) and X-API-Key = HMAC(API_SECRET, X-Key-Input).
-    API_SECRET: str | None = None
+    # Required: server-side secret to generate API keys from user input. Key = HMAC(API_SECRET, user_input).
+    # Client must send X-Key-Input (e.g. org_id) and X-API-Key = HMAC(API_SECRET, X-Key-Input).
+    API_SECRET: str
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

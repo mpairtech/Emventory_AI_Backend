@@ -34,18 +34,14 @@ router = APIRouter(prefix="/search", tags=["AI Search"])
 
 # API key is generated from user input: key = HMAC(API_SECRET, user_input).hexdigest()
 def _generate_key(user_input: str) -> str:
-    if not settings.API_SECRET:
-        return ""
     return hmac.new(
         settings.API_SECRET.encode("utf-8"),
         user_input.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
 
-# If API_SECRET is set, client must send X-Key-Input (e.g. org_id) and X-API-Key = HMAC(API_SECRET, X-Key-Input)
+# API_SECRET is required. Client must send X-Key-Input (e.g. org_id) and X-API-Key = HMAC(API_SECRET, X-Key-Input)
 def verify_api_key(request: Request):
-    if not settings.API_SECRET:
-        return
     key_input = request.headers.get("X-Key-Input", "").strip()
     key = request.headers.get("X-API-Key") or request.headers.get("Authorization", "").replace("Bearer ", "").strip()
     if not key_input:
@@ -60,8 +56,6 @@ def verify_api_key(request: Request):
 
 # To call /generate-key: send X-Key-Input: "generate" and X-API-Key: HMAC(API_SECRET, "generate")
 def verify_generate_key(request: Request):
-    if not settings.API_SECRET:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="API_SECRET not configured")
     key_input = request.headers.get("X-Key-Input", "").strip()
     key = request.headers.get("X-API-Key", "").strip()
     expected = _generate_key("generate")
