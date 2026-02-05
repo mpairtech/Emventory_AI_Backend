@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
-from app.api.v1.router import router
+import logging
 from app.core.exceptions import (
     SearchServiceException,
     EmbeddingGenerationError,
@@ -10,7 +10,6 @@ from app.core.exceptions import (
     RateLimitError,
     ProductNotFoundError
 )
-import logging
 from sqlalchemy import text
 
 from app.core.config import settings
@@ -94,4 +93,32 @@ async def general_exception_handler(request: Request, exc: Exception):
         content={"error": "Internal server error", "detail": "An unexpected error occurred"}
     )
 
-app.include_router(router, prefix="/api/v1")
+# Import router with error handling
+try:
+    from app.api.v1.router import router
+    app.include_router(router, prefix="/api/v1")
+    logger.info("Router included successfully")
+except Exception as e:
+    logger.error(f"Failed to import or include router: {e}", exc_info=True)
+
+# Debug: Verify indexed route is registered
+@app.on_event("startup")
+async def verify_indexed_route():
+    """Verify the indexed POST route is registered."""
+    indexed_routes = [
+        route for route in app.routes
+        if hasattr(route, 'path') and hasattr(route, 'methods') 
+        and '/indexed' in route.path
+    ]
+    for route in indexed_routes:
+        logger.info(f"Indexed route found: {list(route.methods)} {route.path}")
+
+# Debug: List all routes
+@app.on_event("startup")
+async def log_routes():
+    """Log all registered routes for debugging."""
+    routes = []
+    for route in app.routes:
+        if hasattr(route, 'path') and hasattr(route, 'methods'):
+            routes.append(f"{list(route.methods)} {route.path}")
+    logger.info(f"Registered routes: {routes}")
