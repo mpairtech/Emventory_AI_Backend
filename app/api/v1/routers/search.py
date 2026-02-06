@@ -32,6 +32,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/search", tags=["AI Search"])
 
+
+def get_active_provider() -> str:
+    """
+    Get the active LLM provider from settings.
+    Returns 'gemini' or 'openai' based on ACTIVE_PROVIDER env variable.
+    Settings already validates and normalizes the value, so we can use it directly.
+    """
+    provider = settings.ACTIVE_PROVIDER
+    logger.info(f"Using active provider: {provider} (from ACTIVE_PROVIDER env)")
+    return provider
+
+
 # API key is generated from user input: key = HMAC(API_SECRET, user_input).hexdigest()
 def _generate_key(user_input: str) -> str:
     return hmac.new(
@@ -298,15 +310,41 @@ def rag_search(
     _: None = Depends(verify_api_key),
     db: Session = Depends(get_db),
 ):
+    """
+    RAG search endpoint that uses the active provider from ACTIVE_PROVIDER env variable.
+    If active provider is 'gemini', uses Gemini; if 'openai', uses OpenAI.
+    Falls back to the other provider if the active one fails.
+    """
+    active_provider = get_active_provider()
+    fallback_provider = "openai" if active_provider == "gemini" else "gemini"
+    
+    logger.info(f"RAG search request - Query: '{request.query}', Org ID: {request.org_id}, Using provider: {active_provider}")
+    
     try:
-        result = SearchService.rag_search(db, request.query, org_id=request.org_id)
+        # Try active provider first
+        result = SearchService.rag_search(db, request.query, org_id=request.org_id, llm_provider=active_provider)
+        logger.info(f"RAG search completed successfully using {active_provider}")
         return result
     
-    except RateLimitError as e:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=str(e)
-        )
+    except (LLMGenerationError, RateLimitError) as e:
+        # If active provider fails, try fallback provider
+        logger.warning(f"Active provider '{active_provider}' failed: {str(e)}. Trying fallback '{fallback_provider}'")
+        try:
+            result = SearchService.rag_search(db, request.query, org_id=request.org_id, llm_provider=fallback_provider)
+            logger.info(f"Fallback provider '{fallback_provider}' succeeded")
+            return result
+        except Exception as fallback_error:
+            # If fallback also fails, raise original error
+            logger.error(f"Both active and fallback providers failed. Original: {str(e)}, Fallback: {str(fallback_error)}")
+            if isinstance(e, RateLimitError):
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Both providers rate limited. Original: {str(e)}"
+                )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"AI generation error (both providers failed): {str(e)}"
+            )
     
     except EmbeddingGenerationError as e:
         raise HTTPException(
@@ -324,12 +362,6 @@ def rag_search(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Database error: {str(e)}"
-        )
-    
-    except LLMGenerationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"AI generation error: {str(e)}"
         )
     
     except SearchServiceException as e:

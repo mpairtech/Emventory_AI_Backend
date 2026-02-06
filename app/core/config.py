@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     DB_USER: str
     DB_PASSWORD: str
     GEMINI_API_KEY: str
+    # Optional: OpenAI configuration for text generation / search
+    OPENAI_API_KEY: str | None = None
+    OPENAI_MODEL: str = "gpt-4.1-mini"
+    # Active LLM provider: "gemini" or "openai". Defaults to "gemini" if not set.
+    ACTIVE_PROVIDER: str = "gemini"
     LOG_LEVEL: str = "INFO"
 
     # Required: server-side secret to generate API keys from user input. Key = HMAC(API_SECRET, user_input).
@@ -35,6 +40,14 @@ class Settings(BaseSettings):
                 raise ValueError("DB_PORT must be a number")
             raise
         return v
+
+    @field_validator("ACTIVE_PROVIDER")
+    @classmethod
+    def active_provider_valid(cls, v: str) -> str:
+        v_lower = v.lower().strip()
+        if v_lower not in ["gemini", "openai"]:
+            raise ValueError("ACTIVE_PROVIDER must be either 'gemini' or 'openai'")
+        return v_lower
 
     @property
     def DATABASE_URL(self) -> str:
