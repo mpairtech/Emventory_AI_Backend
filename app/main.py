@@ -1,5 +1,7 @@
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
+from app.api.v1.router import router
+from app.api.v1.speech_router import router as speech_router
 import logging
 from app.core.exceptions import (
     SearchServiceException,
@@ -8,7 +10,9 @@ from app.core.exceptions import (
     DatabaseError,
     LLMGenerationError,
     RateLimitError,
-    ProductNotFoundError
+    ProductNotFoundError,
+    SpeechToTextError,
+    AudioProcessingError, 
 )
 from sqlalchemy import text
 
@@ -122,3 +126,5 @@ async def log_routes():
         if hasattr(route, 'path') and hasattr(route, 'methods'):
             routes.append(f"{list(route.methods)} {route.path}")
     logger.info(f"Registered routes: {routes}")
+app.include_router(router, prefix="/api/v1")
+app.include_router(speech_router, prefix="/api/v1")
