@@ -20,6 +20,17 @@ class Settings(BaseSettings):
     # Required: server-side secret to generate API keys from user input. Key = HMAC(API_SECRET, user_input).
     # Client must send X-Key-Input (e.g. org_id) and X-API-Key = HMAC(API_SECRET, X-Key-Input).
     API_SECRET: str
+    SPEECH_MODEL_NAME: str = "openai/whisper-base"
+    SPEECH_DEVICE: str = "cpu"  # "cpu" or "cuda" (for GPU)
+    SPEECH_LANGUAGE_CODE: str = "en"  # ISO language code
+    SPEECH_MAX_AUDIO_SIZE_MB: int = 10
+    SPEECH_SUPPORTED_FORMATS: list[str] = ["wav", "mp3", "flac", "ogg", "webm", "m4a"]
+    
+    # Optional: Hugging Face token for private models (not needed for Whisper)
+    HUGGINGFACE_TOKEN: str | None = None
+    
+    # Model caching
+    SPEECH_MODEL_CACHE_DIR: str = "./models/cache"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
@@ -39,6 +50,9 @@ class Settings(BaseSettings):
     @property
     def DATABASE_URL(self) -> str:
         return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+    @property
+    def MAX_AUDIO_SIZE_BYTES(self) -> int:
+        return self.SPEECH_MAX_AUDIO_SIZE_MB * 1024 * 1024
 
 
 settings = Settings()
