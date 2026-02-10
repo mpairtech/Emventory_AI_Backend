@@ -1,8 +1,84 @@
-from pydantic_settings import BaseSettings
-from pydantic import field_validator
-from dotenv import load_dotenv
+from __future__ import annotations
 
+import logging
+import os
+from pathlib import Path
+
+import yaml
+from dotenv import load_dotenv
+from pydantic import field_validator
+from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
+
+# Load `.env` first (highest priority after real env vars)
 load_dotenv()
+
+
+def _set_env_default(key: str, value) -> None:
+    """
+    Set an env var only if it doesn't already exist.
+    This allows YAML config to provide *defaults* while `.env`/real env override.
+    """
+    if value is None:
+        return
+    s = str(value).strip()
+    if not s:
+        return
+    os.environ.setdefault(key, s)
+
+
+def _apply_yaml_defaults() -> None:
+    """
+    Optional YAML config support.
+
+    - If `APP_CONFIG_FILE` (or `CONFIG_FILE`) is set, load that file.
+    - Else if `APP_ENV` is `local` or `prod`, load `config/{APP_ENV}.yaml`.
+
+    YAML values are applied as *defaults* (won't override existing env vars).
+    """
+    config_file = (os.getenv("APP_CONFIG_FILE") or os.getenv("CONFIG_FILE") or "").strip()
+    app_env = (os.getenv("APP_ENV") or "").strip().lower()
+
+    repo_root = Path(__file__).resolve().parents[2]
+    if not config_file and app_env in {"local", "prod"}:
+        config_file = str(repo_root / "config" / f"{app_env}.yaml")
+
+    if not config_file:
+        return
+
+    config_path = Path(config_file)
+    if not config_path.is_absolute():
+        config_path = repo_root / config_path
+
+    if not config_path.exists():
+        logger.warning("Config file not found: %s", config_path)
+        return
+
+    try:
+        raw = config_path.read_text(encoding="utf-8")
+        data = yaml.safe_load(raw) or {}
+    except Exception as e:
+        logger.warning("Failed to load config YAML (%s): %s", config_path, e)
+        return
+
+    app_cfg = data.get("app") or {}
+    db_cfg = data.get("db") or {}
+
+    # app
+    _set_env_default("LOG_LEVEL", app_cfg.get("log_level"))
+    _set_env_default("ACTIVE_PROVIDER", app_cfg.get("active_provider"))
+
+    # db
+    _set_env_default("DB_HOST", db_cfg.get("host"))
+    _set_env_default("DB_PORT", db_cfg.get("port"))
+    _set_env_default("DB_NAME", db_cfg.get("name"))
+    _set_env_default("DB_USER", db_cfg.get("user"))
+    _set_env_default("DB_PASSWORD", db_cfg.get("password"))
+
+
+# Apply YAML defaults (lower priority than env + .env)
+_apply_yaml_defaults()
 
 # Embedding dimension must match DB model and Gemini text-embedding-004
 EMBEDDING_DIM = 768

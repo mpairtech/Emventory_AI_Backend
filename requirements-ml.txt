@@ -1,0 +1,19 @@
+# Optional heavy ML/DS dependencies.
+#
+# Install only if you need local training, reranking, or custom model work:
+#   pip install -r requirements-prod.txt -r requirements-ml.txt
+
+numpy==2.2.6
+pillow==12.1.0
+
+# HF / Transformers stack
+huggingface-hub==0.36.0
+regex==2025.11.3
+safetensors==0.7.0
+tokenizers==0.22.2
+tqdm==4.67.1
+transformers==4.57.3
+
+# TensorFlow stack (very large)
+tensorflow==2.20.0
+

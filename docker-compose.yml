@@ -1,5 +1,11 @@
-# AI Search Backend — আপনার pgvector_db আলাদা জায়গায় চালু থাকলে শুধু app
-# .env এ DB_HOST, DB_PORT=5433, DB_NAME=Search, DB_USER, DB_PASSWORD, GEMINI_API_KEY সেট করুন
+# AI Search Backend — pgvector + FastAPI
+# NOTE: Hardcoded credentials are removed. Configure via `.env`.
+# Example:
+#   POSTGRES_USER=postgres
+#   POSTGRES_PASSWORD=postgres
+#   POSTGRES_DB=Search
+#   PGADMIN_DEFAULT_EMAIL=admin@local.dev
+#   PGADMIN_DEFAULT_PASSWORD=admin
 
 services:
   postgres:
@@ -7,9 +13,9 @@ services:
     container_name: pgvector_db
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: sAkawat321
-      POSTGRES_DB: Search
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-Search}
     ports:
       - "5433:5432"
     volumes:
@@ -28,8 +34,8 @@ services:
     ports:
       - "5050:80"
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@local.dev
-      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@local.dev}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
     depends_on:
       postgres:
         condition: service_healthy

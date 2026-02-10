@@ -1,0 +1,5 @@
+# Full dependency set (prod + optional ML).
+
+-r requirements-prod.txt
+-r requirements-ml.txt
+

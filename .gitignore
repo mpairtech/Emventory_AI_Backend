@@ -1,17 +1,41 @@
 .env
+.env.*
+!.env.example
+
+# Python bytecode / caches
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-scripts/
-test_gemini_rag.py
 
-# Virtual Environment
-venv
+# Virtual environments
+venv/
+.venv/
 env/
 ENV/
-docs
+
+# Packaging / build artifacts
+build/
+dist/
+*.egg-info/
+
+# Test / lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+
+# Local data / artifacts (keep big files out of git)
+data/
+models/
+
+# Local scratch scripts (keep real scripts in /scripts)
+test_gemini_rag.py
 
 # IDE
 .vscode/

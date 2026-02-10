@@ -307,28 +307,43 @@ def semantic_search(
 @router.post("/rag", response_model=RAGResponse)
 def rag_search(
     request: SearchRequest,
+    provider: str | None = Query(None, description="LLM provider: 'gemini' or 'openai'. If not provided, uses ACTIVE_PROVIDER env variable."),
     _: None = Depends(verify_api_key),
     db: Session = Depends(get_db),
 ):
     """
-    RAG search endpoint that uses the active provider from ACTIVE_PROVIDER env variable.
-    If active provider is 'gemini', uses Gemini; if 'openai', uses OpenAI.
-    Falls back to the other provider if the active one fails.
+    RAG search endpoint that supports provider selection.
+    - If provider query parameter is provided, uses that provider.
+    - Otherwise, uses the active provider from ACTIVE_PROVIDER env variable.
+    - Falls back to the other provider if the selected one fails.
     """
-    active_provider = get_active_provider()
-    fallback_provider = "openai" if active_provider == "gemini" else "gemini"
+    # Use provider from query parameter if provided, otherwise use ACTIVE_PROVIDER
+    if provider:
+        provider = provider.lower().strip()
+        if provider not in ["gemini", "openai"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Provider must be either 'gemini' or 'openai'"
+            )
+        selected_provider = provider
+    else:
+        selected_provider = get_active_provider()
     
-    logger.info(f"RAG search request - Query: '{request.query}', Org ID: {request.org_id}, Using provider: {active_provider}")
+    fallback_provider = "openai" if selected_provider == "gemini" else "gemini"
+    
+    logger.info(f"RAG search request - Query: '{request.query}', Org ID: {request.org_id}, Using provider: {selected_provider}")
     
     try:
-        # Try active provider first
-        result = SearchService.rag_search(db, request.query, org_id=request.org_id, llm_provider=active_provider)
-        logger.info(f"RAG search completed successfully using {active_provider}")
+        # Try selected provider first
+        result = SearchService.rag_search(db, request.query, org_id=request.org_id, llm_provider=selected_provider)
+        logger.info(f"RAG search completed successfully using {selected_provider}")
         return result
     
     except (LLMGenerationError, RateLimitError) as e:
-        # If active provider fails, try fallback provider
-        logger.warning(f"Active provider '{active_provider}' failed: {str(e)}. Trying fallback '{fallback_provider}'")
+        # If selected provider fails, try fallback provider
+        logger.warning(
+            f"Provider '{selected_provider}' failed: {str(e)}. Trying fallback '{fallback_provider}'"
+        )
         try:
             result = SearchService.rag_search(db, request.query, org_id=request.org_id, llm_provider=fallback_provider)
             logger.info(f"Fallback provider '{fallback_provider}' succeeded")
