@@ -1,9 +1,8 @@
+from __future__ import annotations
 
-
-from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
-import torch
-import librosa
-import soundfile as sf
+import os
+import logging
+import tempfile
 from app.core.config import settings
 from app.core.exceptions import (
     SpeechToTextError,
@@ -11,13 +10,63 @@ from app.core.exceptions import (
     UnsupportedAudioFormatError,
     AudioFileTooLargeError,
 )
-import logging
-import tempfile
-import os
 from pathlib import Path
-import numpy as np
+from functools import lru_cache
+from typing import Any, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+@lru_cache(maxsize=1)
+def _load_speech_deps() -> Tuple[Any, Any, Any, Any, Any, Any]:
+    """
+    Lazily import heavy ML deps on first speech use.
+
+    This keeps `uvicorn app.main:app --reload` startup fast and prevents
+    TensorFlow import issues from crashing the whole API process.
+    """
+    # Prevent Transformers from trying to use TensorFlow/Flax if present.
+    # (On Windows, TensorFlow is commonly installed but broken/incompatible.)
+    os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
+    os.environ.setdefault("TRANSFORMERS_NO_FLAX", "1")
+
+    try:
+        # NOTE: Avoid importing `AutoProcessor` here. Recent Transformers versions can
+        # import TensorFlow via image processing utilities when `AutoProcessor` is used,
+        # and a broken TensorFlow install on Windows will crash the import.
+        from transformers import AutoModelForSpeechSeq2Seq, WhisperProcessor, pipeline  # type: ignore
+    except Exception as e:  # pragma: no cover
+        msg = str(e)
+        if "pywrap_tensorflow" in msg or "_pywrap_tensorflow_internal" in msg or "Failed to load the native TensorFlow runtime" in msg:
+            hint = "TensorFlow is installed but broken on Windows. Fix: `pip uninstall -y tensorflow`."
+        elif "c10.dll" in msg or "WinError 1114" in msg:
+            hint = (
+                "PyTorch failed to load native DLLs. Fix: install Microsoft Visual C++ Redistributable "
+                "2015-2022 (x64), then restart your terminal/uvicorn."
+            )
+        else:
+            hint = "Check your ML dependencies (transformers/torch) in this venv."
+        raise SpeechToTextError(
+            "Speech dependencies failed to import (transformers). " + hint
+        ) from e
+
+    try:
+        import torch  # type: ignore
+    except Exception as e:  # pragma: no cover
+        raise SpeechToTextError(
+            "Speech dependencies failed to import (torch). "
+            "Install PyTorch to enable speech-to-text."
+        ) from e
+
+    try:
+        import librosa  # type: ignore
+        import numpy as np  # type: ignore
+    except Exception as e:  # pragma: no cover
+        raise SpeechToTextError(
+            "Speech dependencies failed to import (librosa/numpy). "
+            "Install audio processing dependencies to enable speech-to-text."
+        ) from e
+
+    return AutoModelForSpeechSeq2Seq, WhisperProcessor, pipeline, torch, librosa, np
 
 class HuggingFaceSpeechService:
     """
@@ -39,6 +88,8 @@ class HuggingFaceSpeechService:
             return
         
         try:
+            AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline, torch, _, _ = _load_speech_deps()
+
             logger.info(f"Loading Hugging Face model: {self.model_name}")
             logger.info(f"Device: {self.device}")
             logger.info("First load will download model (~150MB-1.5GB depending on model size)")
@@ -88,6 +139,14 @@ class HuggingFaceSpeechService:
             
         except Exception as e:
             logger.error(f"Failed to load model: {e}", exc_info=True)
+            # Helpful hint for the most common Windows failure mode seen in logs.
+            msg = str(e)
+            if "pywrap_tensorflow" in msg or "_pywrap_tensorflow_internal" in msg or "Failed to load the native TensorFlow runtime" in msg:
+                raise SpeechToTextError(
+                    "Speech model load failed because TensorFlow is installed but cannot load on Windows. "
+                    "Fix: uninstall TensorFlow from this venv (recommended) or install a compatible Windows TensorFlow. "
+                    "Example: `pip uninstall -y tensorflow` (then restart uvicorn)."
+                ) from e
             raise SpeechToTextError(f"Failed to load speech model: {str(e)}")
     
     def _validate_audio_file(self, audio_data: bytes, filename: str) -> str:
@@ -115,13 +174,15 @@ class HuggingFaceSpeechService:
         logger.info(f"Audio validated: {filename} ({file_size_mb:.2f}MB, format: {extension})")
         return extension
     
-    def _process_audio(self, audio_data: bytes, filename: str) -> np.ndarray:
+    def _process_audio(self, audio_data: bytes, filename: str) -> Any:
         """
         Convert audio to format expected by Whisper (16kHz mono).
         Handles various input formats.
         """
         temp_file = None
         try:
+            _, _, _, _, librosa, _ = _load_speech_deps()
+
             # Save to temporary file
             with tempfile.NamedTemporaryFile(
                 delete=False, 
@@ -156,7 +217,7 @@ class HuggingFaceSpeechService:
         self, 
         audio_data: bytes, 
         filename: str,
-        language_code: str | None = None
+        language_code: Optional[str] = None
     ) -> str:
         """
         Transcribe audio to text using Hugging Face Whisper model.

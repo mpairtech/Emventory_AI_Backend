@@ -14,6 +14,10 @@ tokenizers==0.22.2
 tqdm==4.67.1
 transformers==4.57.3
 
-# TensorFlow stack (very large)
-tensorflow==2.20.0
+# NOTE (Windows): Do NOT install TensorFlow in this project unless you truly need it.
+# Recent TensorFlow releases are not supported for native Windows Python installs and
+# commonly cause DLL load failures that can break Transformers imports.
+#
+# If you need TensorFlow, install it in WSL2/Linux or pin a Windows-compatible version.
+# tensorflow==2.20.0
 
