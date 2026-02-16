@@ -3,6 +3,7 @@ from app.db.models.vector import ProductVector
 from app.modules.search.repository import SearchRepository
 from app.core.vector.pgvector import VectorStore
 from app.core.llm.gemini import GeminiClient
+from app.core.llm.openai import OpenAIClient
 import re
 import math
 from typing import List, Dict, Any, Set
@@ -251,8 +252,11 @@ class SearchService:
         )
 
     @staticmethod
-    def rag_search(db, query: str, org_id: str | None = None):
-        """RAG: Retrieve relevant products + Generate AI answer. If org_id given, only that org's products."""
+    def rag_search(db, query: str, org_id: str | None = None, llm_provider: str = "gemini"):
+        """RAG: Retrieve relevant products + Generate AI answer. If org_id given, only that org's products.
+        
+        llm_provider controls which model is used for generation ("gemini" or "openai").
+        """
         prepared_query = SearchService._prepare_query_text(query)
         embedding = EmbeddingService.embed(prepared_query)
         raw_results = VectorStore.search(db, embedding, org_id=org_id)
@@ -290,8 +294,12 @@ class SearchService:
             context_parts.append(" ".join(parts))
         context = "\n".join(context_parts)
 
-        # 4. Generate answer using Gemini LLM with the ORIGINAL user query for natural phrasing
-        answer = GeminiClient.generate(query, context)
+        # 4. Generate answer using selected LLM with the ORIGINAL user query for natural phrasing
+        provider = (llm_provider or "gemini").lower()
+        if provider == "openai":
+            answer = OpenAIClient.generate(query, context)
+        else:
+            answer = GeminiClient.generate(query, context)
 
         return {
             "answer": answer,

@@ -32,6 +32,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/search", tags=["AI Search"])
 
+
+def get_active_provider() -> str:
+    """
+    Get the active LLM provider from settings.
+    Returns 'gemini' or 'openai' based on ACTIVE_PROVIDER env variable.
+    Settings already validates and normalizes the value, so we can use it directly.
+    """
+    provider = settings.ACTIVE_PROVIDER
+    logger.info(f"Using active provider: {provider} (from ACTIVE_PROVIDER env)")
+    return provider
+
+
 # API key is generated from user input: key = HMAC(API_SECRET, user_input).hexdigest()
 def _generate_key(user_input: str) -> str:
     return hmac.new(
@@ -295,18 +307,59 @@ def semantic_search(
 @router.post("/rag", response_model=RAGResponse)
 def rag_search(
     request: SearchRequest,
+    provider: str | None = Query(None, description="LLM provider: 'gemini' or 'openai'. If not provided, uses ACTIVE_PROVIDER env variable."),
     _: None = Depends(verify_api_key),
     db: Session = Depends(get_db),
 ):
+    """
+    RAG search endpoint that supports provider selection.
+    - If provider query parameter is provided, uses that provider.
+    - Otherwise, uses the active provider from ACTIVE_PROVIDER env variable.
+    - Falls back to the other provider if the selected one fails.
+    """
+    # Use provider from query parameter if provided, otherwise use ACTIVE_PROVIDER
+    if provider:
+        provider = provider.lower().strip()
+        if provider not in ["gemini", "openai"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Provider must be either 'gemini' or 'openai'"
+            )
+        selected_provider = provider
+    else:
+        selected_provider = get_active_provider()
+    
+    fallback_provider = "openai" if selected_provider == "gemini" else "gemini"
+    
+    logger.info(f"RAG search request - Query: '{request.query}', Org ID: {request.org_id}, Using provider: {selected_provider}")
+    
     try:
-        result = SearchService.rag_search(db, request.query, org_id=request.org_id)
+        # Try selected provider first
+        result = SearchService.rag_search(db, request.query, org_id=request.org_id, llm_provider=selected_provider)
+        logger.info(f"RAG search completed successfully using {selected_provider}")
         return result
     
-    except RateLimitError as e:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=str(e)
+    except (LLMGenerationError, RateLimitError) as e:
+        # If selected provider fails, try fallback provider
+        logger.warning(
+            f"Provider '{selected_provider}' failed: {str(e)}. Trying fallback '{fallback_provider}'"
         )
+        try:
+            result = SearchService.rag_search(db, request.query, org_id=request.org_id, llm_provider=fallback_provider)
+            logger.info(f"Fallback provider '{fallback_provider}' succeeded")
+            return result
+        except Exception as fallback_error:
+            # If fallback also fails, raise original error
+            logger.error(f"Both active and fallback providers failed. Original: {str(e)}, Fallback: {str(fallback_error)}")
+            if isinstance(e, RateLimitError):
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Both providers rate limited. Original: {str(e)}"
+                )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"AI generation error (both providers failed): {str(e)}"
+            )
     
     except EmbeddingGenerationError as e:
         raise HTTPException(
@@ -324,12 +377,6 @@ def rag_search(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Database error: {str(e)}"
-        )
-    
-    except LLMGenerationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"AI generation error: {str(e)}"
         )
     
     except SearchServiceException as e:

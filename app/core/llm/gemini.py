@@ -1,16 +1,38 @@
-import google.genai as genai
+from __future__ import annotations
+
 from app.core.config import settings
 from app.core.exceptions import EmbeddingGenerationError, LLMGenerationError, RateLimitError
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 import logging
+from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
-try:
-    client = genai.Client(api_key=settings.GEMINI_API_KEY)
-except Exception as e:
-    logger.error(f"Failed to initialize Gemini client: {e}")
-    raise
+@lru_cache(maxsize=1)
+def _get_client():
+    """
+    Lazily create the Gemini client.
+
+    This prevents the whole API from failing to start if:
+    - `google-genai` isn't installed in the current environment, or
+    - GEMINI_API_KEY isn't configured (only fails when calling LLM methods).
+    """
+    try:
+        from google import genai  # type: ignore
+    except Exception as e:  # pragma: no cover
+        raise LLMGenerationError(
+            "Gemini client dependency missing. Install `google-genai` to enable embeddings/LLM."
+        ) from e
+
+    try:
+        # Prefer explicit settings key; otherwise let the SDK read env vars.
+        api_key = getattr(settings, "GEMINI_API_KEY", None)
+        if api_key:
+            return genai.Client(api_key=api_key)
+        return genai.Client()
+    except Exception as e:  # pragma: no cover
+        logger.error(f"Failed to initialize Gemini client: {e}", exc_info=True)
+        raise
 
 class GeminiClient:
     
@@ -26,6 +48,7 @@ class GeminiClient:
             raise EmbeddingGenerationError("Can't embed empty text")
         
         try:
+            client = _get_client()
             response = client.models.embed_content(
                 model="text-embedding-004",
                 contents=text
@@ -65,6 +88,7 @@ class GeminiClient:
             raise LLMGenerationError("Can't generate response for empty prompt")
         
         try:
+            client = _get_client()
             full_prompt = f"""You are a helpful ecommerce product assistant.
 You must answer the user's query **only** using the product information given below.
 If the products are not relevant or the information is insufficient, clearly say that you cannot find a good match.
