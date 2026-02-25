@@ -67,6 +67,12 @@ class SearchRequest(BaseModel):
         if not v or v.strip() == "":
             raise ValueError("Query can't be empty ")
         return v.strip()
+class CloudinaryVoiceSearchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    
+    cloudinary_url: str = Field(..., description="Cloudinary audio file URL")
+    org_id: Optional[str] = Field(None, max_length=255)
+    language_code: Optional[str] = Field(None, description="e.g. 'en', 'es'")
 
 class ProductResponse(BaseModel):
     org_id: Optional[str] = None

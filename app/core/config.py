@@ -75,6 +75,11 @@ def _apply_yaml_defaults() -> None:
     _set_env_default("DB_NAME", db_cfg.get("name"))
     _set_env_default("DB_USER", db_cfg.get("user"))
     _set_env_default("DB_PASSWORD", db_cfg.get("password"))
+    # redis
+    _set_env_default("REDIS_HOST", redis_cfg.get("host"))
+    _set_env_default("REDIS_PORT", redis_cfg.get("port"))
+    _set_env_default("REDIS_DB", redis_cfg.get("db"))
+    _set_env_default("REDIS_PASSWORD", redis_cfg.get("password"))
 
 
 # Apply YAML defaults (lower priority than env + .env)
@@ -101,11 +106,28 @@ class Settings(BaseSettings):
     # Required: server-side secret to generate API keys from user input. Key = HMAC(API_SECRET, user_input).
     # Client must send X-Key-Input (e.g. org_id) and X-API-Key = HMAC(API_SECRET, X-Key-Input).
     API_SECRET: str
+
+    # Redis Configuration
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
+    REDIS_PASSWORD: str | None = None
+    REDIS_ENABLED: bool = True  # Feature flag to enable/disable caching
+    REDIS_TTL_RAG: int = 900  # 15 minutes for RAG responses
+    REDIS_TTL_EMBEDDINGS: int = 3600  # 1 hour for embeddings
+    REDIS_MAX_CONNECTIONS: int = 10
+    REDIS_SOCKET_TIMEOUT: int = 5
+    REDIS_SOCKET_CONNECT_TIMEOUT: int = 5
+
     SPEECH_MODEL_NAME: str = "openai/whisper-base"
     SPEECH_DEVICE: str = "cpu"  # "cpu" or "cuda" (for GPU)
     SPEECH_LANGUAGE_CODE: str = "en"  # ISO language code
     SPEECH_MAX_AUDIO_SIZE_MB: int = 10
     SPEECH_SUPPORTED_FORMATS: list[str] = ["wav", "mp3", "flac", "ogg", "webm", "m4a"]
+
+   
+
+
     
     # Optional: Hugging Face token for private models (not needed for Whisper)
     HUGGINGFACE_TOKEN: str | None = None
@@ -135,6 +157,19 @@ class Settings(BaseSettings):
         if v_lower not in ["gemini", "openai"]:
             raise ValueError("ACTIVE_PROVIDER must be either 'gemini' or 'openai'")
         return v_lower
+    @field_validator("REDIS_PORT")
+    @classmethod
+    def redis_port_valid(cls, v: int) -> int:
+        if not (1 <= v <= 65535):
+            raise ValueError("REDIS_PORT must be between 1 and 65535")
+        return v
+    
+    @field_validator("REDIS_DB")
+    @classmethod
+    def redis_db_valid(cls, v: int) -> int:
+        if not (0 <= v <= 15):
+            raise ValueError("REDIS_DB must be between 0 and 15")
+        return v
 
     @property
     def DATABASE_URL(self) -> str:

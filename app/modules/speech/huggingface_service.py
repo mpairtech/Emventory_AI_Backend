@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import logging
 import tempfile
+import cloudinary
 from app.core.config import settings
 from app.core.exceptions import (
     SpeechToTextError,

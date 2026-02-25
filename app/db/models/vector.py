@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Text, Float, String, UniqueConstraint
+from sqlalchemy import Column, Text, Float, Integer,String, UniqueConstraint
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.orm import declarative_base
 
@@ -33,6 +33,6 @@ class ProductVector(Base):
     # Commerce fields
     price = Column(Float, nullable=True)             # Current price
     rating = Column(Float, nullable=True)            # Avg rating from review table
-    review_count = Column(Float, nullable=True)      # Number of reviews
+    review_count = Column(Integer, nullable=True)      # Number of reviews
 
     status = Column(String(50), nullable=True)       # ACTIVE / INACTIVE / DRAFT

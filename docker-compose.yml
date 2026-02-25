@@ -1,4 +1,4 @@
-# AI Search Backend — pgvector + FastAPI
+# AI Search Backend — pgvector + FastAPI + Redis
 # NOTE: Hardcoded credentials are removed. Configure via `.env`.
 # Example:
 #   POSTGRES_USER=postgres
@@ -6,6 +6,7 @@
 #   POSTGRES_DB=Search
 #   PGADMIN_DEFAULT_EMAIL=admin@local.dev
 #   PGADMIN_DEFAULT_PASSWORD=admin
+#   REDIS_PASSWORD=redis_password (optional)
 
 services:
   postgres:
@@ -24,6 +25,28 @@ services:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis_cache
+    restart: always
+    ports:
+      - "6379:6379"
+    command: >
+      sh -c "if [ -n \"$$REDIS_PASSWORD\" ]; then
+        redis-server --requirepass $$REDIS_PASSWORD --appendonly yes;
+      else
+        redis-server --appendonly yes;
+      fi"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
       retries: 5
 
   # pgAdmin: ব্রাউজারে http://localhost:5050 — লগইন admin@local.dev / admin — Server add করলে Host: pgvector_db, Port: 5432, DB: Search, User: postgres
@@ -50,13 +73,22 @@ services:
     environment:
       DB_HOST: pgvector_db
       DB_PORT: "5432"
+      REDIS_HOST: redis_cache
+      REDIS_PORT: "6379"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
 volumes:
   pgvector_data:
+  redis_data:
     # আপনার postgres যেখানে চালু (host এ 5433 এ) সেখানে কানেক্ট করতে:
     # Windows/Mac: DB_HOST=host.docker.internal, DB_PORT=5433
     # Linux: DB_HOST=172.17.0.1 বা host IP, DB_PORT=5433
     # একই Docker network এ থাকলে: DB_HOST=pgvector_db, DB_PORT=5432
+    #
+    # Redis সংযোগ:
+    # Docker network এ: REDIS_HOST=redis_cache, REDIS_PORT=6379
+    # Host থেকে: REDIS_HOST=localhost, REDIS_PORT=6379
