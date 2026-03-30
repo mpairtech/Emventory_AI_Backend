@@ -28,14 +28,15 @@ def _get_client():
         # Prefer explicit settings key; otherwise let the SDK read env vars.
         api_key = getattr(settings, "GEMINI_API_KEY", None)
         if api_key:
-            return genai.Client(api_key=api_key)
+            return genai.Client(api_key=api_key)  # No api_version override — SDK handles it
         return genai.Client()
     except Exception as e:  # pragma: no cover
         logger.error(f"Failed to initialize Gemini client: {e}", exc_info=True)
         raise
 
+
 class GeminiClient:
-    
+
     @staticmethod
     @retry(
         stop=stop_after_attempt(3),
@@ -46,36 +47,36 @@ class GeminiClient:
     def embed(text: str) -> list[float]:
         if not text or not text.strip():
             raise EmbeddingGenerationError("Can't embed empty text")
-        
+
         try:
             client = _get_client()
             response = client.models.embed_content(
-                model="text-embedding-004",
+                model='models/gemini-embedding-001',  # Fixed: was 'models/text-embedding-004' (not available)
                 contents=text
             )
-            
+
             if not response.embeddings or not response.embeddings[0].values:
                 raise EmbeddingGenerationError("Empty embedding returned from API")
-            
+
             return response.embeddings[0].values
-            
+
         except AttributeError as e:
             raise EmbeddingGenerationError(f"Invalid API response: {str(e)}")
-            
+
         except Exception as e:
             error_msg = str(e).lower()
-            
+
             if "rate limit" in error_msg or "quota" in error_msg or "429" in error_msg:
                 raise RateLimitError(f"API rate limit exceeded: {str(e)}")
-            
+
             if "auth" in error_msg or "api key" in error_msg or "401" in error_msg:
                 raise EmbeddingGenerationError(f"Authentication error: {str(e)}")
-            
+
             if "connection" in error_msg or "timeout" in error_msg:
                 raise ConnectionError(f"Network error: {str(e)}")
-            
+
             raise EmbeddingGenerationError(f"Failed to generate embedding: {str(e)}")
-    
+
     @staticmethod
     @retry(
         stop=stop_after_attempt(3),
@@ -86,7 +87,7 @@ class GeminiClient:
     def generate(prompt: str, context: str) -> str:
         if not prompt or not prompt.strip():
             raise LLMGenerationError("Can't generate response for empty prompt")
-        
+
         try:
             client = _get_client()
             full_prompt = f"""You are a helpful ecommerce product assistant.
@@ -108,28 +109,28 @@ If the products are not relevant or the information is insufficient, clearly say
 - Keep the answer concise, clear, and user-friendly."""
 
             response = client.models.generate_content(
-                model="models/gemini-flash-latest",
+                model="models/gemini-2.0-flash",  # Fixed: was 'models/gemini-flash-latest' (not a valid name)
                 contents=full_prompt
             )
-            
+
             if not response.text:
                 raise LLMGenerationError("Empty response returned from LLM")
-            
+
             return response.text
-            
+
         except AttributeError as e:
             raise LLMGenerationError(f"Invalid LLM response: {str(e)}")
-            
+
         except Exception as e:
             error_msg = str(e).lower()
-            
+
             if "rate limit" in error_msg or "quota" in error_msg or "429" in error_msg:
                 raise RateLimitError(f"LLM rate limit exceeded: {str(e)}")
-            
+
             if "auth" in error_msg or "api key" in error_msg or "401" in error_msg:
                 raise LLMGenerationError(f"Authentication error: {str(e)}")
-            
+
             if "connection" in error_msg or "timeout" in error_msg:
                 raise ConnectionError(f"Network error: {str(e)}")
-            
+
             raise LLMGenerationError(f"Failed to generate response: {str(e)}")

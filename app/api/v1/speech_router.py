@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form,Query,WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 import httpx
+import numpy as np
+from typing import Optional
 from urllib.parse import urlparse
 from app.api.v1.schemas import CloudinaryVoiceSearchRequest
 from app.db.session import get_db
@@ -19,6 +21,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/speech", tags=["Speech Search"])
+CHUNK_WINDOW_S = 3        
+SAMPLE_RATE    = 16_000   
+MAX_SESSION_S  = 300
 
 
 @router.get("/model-info")
@@ -242,3 +247,199 @@ async def cloudinary_voice_search(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Cloudinary voice search failed"
         )
+def _bytes_to_numpy(raw: bytes) -> np.ndarray:
+   
+    audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32)
+    audio /= 32768.0
+    return audio
+
+
+async def _transcribe_chunk_async(audio_np: np.ndarray, language: Optional[str]) -> str:
+    
+    generate_kwargs = {}
+    if language:
+        generate_kwargs["language"] = language.split("-")[0].lower()
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        None,
+        lambda: huggingface_speech_service.pipe(audio_np, generate_kwargs=generate_kwargs),
+    )
+    return result["text"].strip()
+
+
+@router.websocket("/stream")
+async def stream_transcription(
+    websocket: WebSocket,
+    api_key: str = Query(..., alias="api_key"),
+    language_code: Optional[str] = Query(None, alias="language"),
+    org_id: Optional[str] = Query(None, alias="org_id"),
+    db: Session = Depends(get_db),
+):
+   
+
+    
+    if api_key != API_KEY:
+        await websocket.close(code=1008)
+        return
+
+    await websocket.accept()
+    logger.info(f"[stream] Session opened | lang={language_code} org={org_id}")
+
+    
+    try:
+        huggingface_speech_service._load_model()
+    except SpeechToTextError as e:
+        await websocket.send_text(json.dumps({"type": "error", "detail": str(e)}))
+        await websocket.close()
+        return
+
+    # 
+    audio_buffer: list[np.ndarray] = []
+    full_transcript: list[str]     = []
+    chunk_index   = 0
+    session_bytes = 0
+    max_bytes     = SAMPLE_RATE * 2 * MAX_SESSION_S  
+
+    transcribe_event = asyncio.Event()
+    stop_event       = asyncio.Event()
+
+    
+    async def transcription_loop():
+        nonlocal chunk_index
+        while not stop_event.is_set():
+            await transcribe_event.wait()
+            transcribe_event.clear()
+
+            if not audio_buffer:
+                continue
+
+            batch = np.concatenate(audio_buffer.copy())
+            audio_buffer.clear()
+
+            
+            if len(batch) < SAMPLE_RATE * 0.3:
+                continue
+
+            try:
+                text = await _transcribe_chunk_async(batch, language_code)
+                if text:
+                    full_transcript.append(text)
+                    chunk_index += 1
+                    await websocket.send_text(json.dumps({
+                        "type":        "partial",
+                        "transcript":  text,
+                        "chunk_index": chunk_index,
+                    }))
+                    logger.debug(f"[stream] Partial [{chunk_index}]: {text[:80]}")
+            except Exception as e:
+                logger.warning(f"[stream] Chunk error: {e}")
+
+    
+    async def periodic_flush():
+        while not stop_event.is_set():
+            await asyncio.sleep(CHUNK_WINDOW_S)
+            if audio_buffer:
+                transcribe_event.set()
+
+    transcription_task = asyncio.create_task(transcription_loop())
+    flush_task         = asyncio.create_task(periodic_flush())
+
+    
+    try:
+        while True:
+            message = await websocket.receive()
+
+            if "text" in message:
+                try:
+                    payload = json.loads(message["text"])
+                except json.JSONDecodeError:
+                    payload = {}
+
+                if payload.get("action") == "stop":
+                    logger.info("[stream] Stop signal received")
+                    break
+
+            elif "bytes" in message:
+                raw = message["bytes"]
+                session_bytes += len(raw)
+
+                if session_bytes > max_bytes:
+                    await websocket.send_text(json.dumps({
+                        "type":   "error",
+                        "detail": f"Session limit of {MAX_SESSION_S}s reached.",
+                    }))
+                    break
+
+                audio_buffer.append(_bytes_to_numpy(raw))
+
+    except WebSocketDisconnect:
+        logger.info("[stream] Client disconnected")
+
+    except Exception as e:
+        logger.error(f"[stream] Receive error: {e}", exc_info=True)
+        try:
+            await websocket.send_text(json.dumps({"type": "error", "detail": str(e)}))
+        except Exception:
+            pass
+
+    finally:
+        
+        stop_event.set()
+        transcribe_event.set()   
+        await transcription_task
+        flush_task.cancel()
+
+        
+        if audio_buffer:
+            remainder = np.concatenate(audio_buffer)
+            if len(remainder) >= SAMPLE_RATE * 0.3:
+                try:
+                    text = await _transcribe_chunk_async(remainder, language_code)
+                    if text:
+                        full_transcript.append(text)
+                except Exception as e:
+                    logger.warning(f"[stream] Final flush error: {e}")
+
+        combined = " ".join(full_transcript).strip()
+        logger.info(f"[stream] Session ended. Transcript: '{combined[:120]}'")
+
+        
+        if combined:
+            try:
+                result = SearchService.rag_search(db, combined, org_id=org_id)
+                await websocket.send_text(json.dumps({
+                    "type":       "final",
+                    "transcript": combined,
+                    "answer":     result["answer"],
+                    "sources":    result["sources"],
+                    "metadata": {
+                        "model":    huggingface_speech_service.model_name,
+                        "language": language_code or "auto-detected",
+                        "org_id":   org_id,
+                        "cost":     "FREE",
+                    }
+                }))
+            except SearchServiceException as e:
+                await websocket.send_text(json.dumps({
+                    "type":       "final",
+                    "transcript": combined,
+                    "answer":     None,
+                    "sources":    [],
+                    "warning":    f"Search failed: {str(e)}",
+                }))
+        else:
+            await websocket.send_text(json.dumps({
+                "type":       "final",
+                "transcript": "",
+                "answer":     None,
+                "sources":    [],
+                "warning":    "No speech detected during session",
+            }))
+
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+        logger.info("[stream] WebSocket closed cleanly")

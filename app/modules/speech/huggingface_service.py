@@ -293,7 +293,7 @@ class HuggingFaceSpeechService:
             "supported_languages": [
                 "en", "es", "fr", "de", "it", "pt", "nl", "ru", "zh", "ja", "ko",
                 "ar", "hi", "tr", "pl", "uk", "vi", "th", "id", "ms", "fa"
-                # Whisper supports 99 languages total
+                
             ]
         }
 

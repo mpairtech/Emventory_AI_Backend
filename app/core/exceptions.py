@@ -18,7 +18,7 @@ class RateLimitError(SearchServiceException):
 
 class ProductNotFoundError(SearchServiceException):
     pass
-# ADD THESE NEW EXCEPTIONS:
+
 class SpeechServiceException(SearchServiceException):
     """Base exception for speech services"""
     pass

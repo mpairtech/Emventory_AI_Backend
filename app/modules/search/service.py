@@ -8,7 +8,7 @@ from app.core.cache.cache_service import cache_service
 
 import re
 import math
-from typing import List, Dict, Any, Set
+from typing import List, Dict, Any, Set, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -59,7 +59,55 @@ class SearchService:
         return prepared
 
     # ============================================================
-    # RANKING LOGIC (unchanged)
+    # FILTER HELPER
+    # ============================================================
+
+    @staticmethod
+    def _apply_filters(results: List[Dict[str, Any]], filters) -> List[Dict[str, Any]]:
+        """
+        Apply post-retrieval filters to ranked results.
+        Runs after vector ranking so similarity scores are unaffected.
+        filters is a SearchFilters instance or None.
+        """
+        if not filters or not results:
+            return results
+
+        filtered = []
+        for item in results:
+
+            # Category (case-insensitive exact match)
+            if filters.category:
+                if (item.get("category") or "").strip().lower() != filters.category.strip().lower():
+                    continue
+
+            # Brand (case-insensitive exact match)
+            if filters.brand:
+                if (item.get("brand") or "").strip().lower() != filters.brand.strip().lower():
+                    continue
+
+            # Price max
+            if filters.price_max is not None:
+                item_price = item.get("price")
+                if item_price is not None and float(item_price) > filters.price_max:
+                    continue
+
+            # Price min
+            if filters.price_min is not None:
+                item_price = item.get("price")
+                if item_price is not None and float(item_price) < filters.price_min:
+                    continue
+
+            # Status (case-insensitive)
+            if filters.status:
+                if (item.get("status") or "").strip().upper() != filters.status.strip().upper():
+                    continue
+
+            filtered.append(item)
+
+        return filtered
+
+    # ============================================================
+    # RANKING LOGIC
     # ============================================================
 
     @staticmethod
@@ -67,7 +115,7 @@ class SearchService:
         query: str,
         results: List[Dict[str, Any]],
         *,
-        min_score: float = 0.5,
+        min_score: float = 0.25,   # FIX: lowered from 0.5 → 0.25 to avoid filtering valid results
         max_items: int = 10
     ) -> List[Dict[str, Any]]:
 
@@ -84,9 +132,14 @@ class SearchService:
             return []
 
         max_base = max(base_scores)
-        if max_base < 0.30:
+
+        # FIX: lowered guard from 0.30 → 0.15 to handle small datasets with lower
+        # relative similarity scores (cosine similarity is density-dependent)
+        if max_base < 0.15:
             return []
 
+        # FIX: effective_min now uses min_score=0.25 instead of 0.5,
+        # so results between 0.25–0.50 are no longer silently dropped
         effective_min = max(min_score, max_base - 0.25)
 
         scored: List[Dict[str, Any]] = []
@@ -197,17 +250,70 @@ class SearchService:
 
         SearchRepository.upsert(db, vector)
 
-        # 🔥 Invalidate entire org cache
+        # Invalidate entire org cache on new index
         cache_service.invalidate_org(payload["org_id"])
         logger.info(f"Invalidated RAG cache for org_id={payload['org_id']}")
+
+    # ============================================================
+    # SEMANTIC SEARCH
+    # ============================================================
+
+    @staticmethod
+    def semantic_search(
+        db,
+        query: str,
+        org_id: Optional[str] = None,
+        top_k: int = 10,
+        filters=None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Pure vector similarity search with optional post-retrieval filtering.
+        No LLM generation — returns ranked product list directly.
+        """
+        if not query or not query.strip():
+            return []
+
+        prepared = SearchService._prepare_query_text(query)
+        if not prepared:
+            return []
+
+        embedding = EmbeddingService.embed(prepared)
+        raw_results = VectorStore.search(db, embedding, org_id=org_id)
+
+        # FIX: min_score lowered to 0.25 (was 0.5) — prevents valid results from
+        # being silently dropped, especially with small datasets where cosine
+        # similarity scores naturally fall in the 0.3–0.6 range
+        ranked = SearchService._post_process_results(
+            query=prepared,
+            results=raw_results or [],
+            min_score=0.25,
+            max_items=top_k,
+        )
+
+        # Apply filters after ranking so scores are unaffected
+        if filters:
+            ranked = SearchService._apply_filters(ranked, filters)
+
+        logger.info(
+            f"Semantic search | org={org_id} | query='{query}' "
+            f"| raw={len(raw_results or [])} | ranked={len(ranked)} | top_k={top_k}"
+        )
+
+        return ranked
 
     # ============================================================
     # RAG SEARCH (Cache Integrated)
     # ============================================================
 
     @staticmethod
-    def rag_search(db, query: str, org_id: str | None = None, llm_provider: str = "gemini"):
-
+    def rag_search(
+        db,
+        query: str,
+        org_id: Optional[str] = None,
+        llm_provider: str = "gemini",
+        top_k: int = 5,
+        filters=None,
+    ):
         if not query or not query.strip():
             return {
                 "answer": "Please provide a valid query.",
@@ -236,12 +342,17 @@ class SearchService:
         embedding = EmbeddingService.embed(prepared_query)
         raw_results = VectorStore.search(db, embedding, org_id=org_id)
 
+        # FIX: min_score lowered to 0.25 (was 0.5) — same fix as semantic_search
         ranked = SearchService._post_process_results(
             query=prepared_query,
             results=raw_results or [],
-            min_score=0.5,
-            max_items=5,
+            min_score=0.25,
+            max_items=top_k,
         )
+
+        # Apply filters after ranking
+        if filters:
+            ranked = SearchService._apply_filters(ranked, filters)
 
         if not ranked:
             response = {

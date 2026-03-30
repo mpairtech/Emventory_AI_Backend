@@ -86,7 +86,7 @@ def _apply_yaml_defaults() -> None:
 _apply_yaml_defaults()
 
 # Embedding dimension must match DB model and Gemini text-embedding-004
-EMBEDDING_DIM = 768
+EMBEDDING_DIM = 3072
 
 
 class Settings(BaseSettings):
@@ -95,12 +95,12 @@ class Settings(BaseSettings):
     DB_NAME: str
     DB_USER: str
     DB_PASSWORD: str
-    GEMINI_API_KEY: str
+    GEMINI_API_KEY: str | None = None
     # Optional: OpenAI configuration for text generation / search
     OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4.1-mini"
     # Active LLM provider: "gemini" or "openai". Defaults to "gemini" if not set.
-    ACTIVE_PROVIDER: str = "gemini"
+    ACTIVE_PROVIDER: str = "openai"
     LOG_LEVEL: str = "INFO"
 
     # Required: server-side secret to generate API keys from user input. Key = HMAC(API_SECRET, user_input).
@@ -118,7 +118,7 @@ class Settings(BaseSettings):
     REDIS_MAX_CONNECTIONS: int = 10
     REDIS_SOCKET_TIMEOUT: int = 5
     REDIS_SOCKET_CONNECT_TIMEOUT: int = 5
-
+    #huggingFace configuration
     SPEECH_MODEL_NAME: str = "openai/whisper-base"
     SPEECH_DEVICE: str = "cpu"  # "cpu" or "cuda" (for GPU)
     SPEECH_LANGUAGE_CODE: str = "en"  # ISO language code

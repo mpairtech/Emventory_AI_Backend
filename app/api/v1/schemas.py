@@ -39,6 +39,7 @@ class ProductIndexRequest(BaseModel):
         s = v.strip()
         return s if s else None
 
+
 class ListIndexedRequest(BaseModel):
     """Body for POST /search/indexed/list. Only these fields accepted; extra fields rejected (422)."""
     model_config = ConfigDict(extra="forbid")
@@ -54,25 +55,41 @@ class GenerateKeyRequest(BaseModel):
     input: str = Field(..., min_length=1, max_length=500, description="e.g. org_id — key will be generated from this")
 
 
+class SearchFilters(BaseModel):
+    """Optional post-retrieval filters. Applied after vector ranking so scores are unaffected."""
+    model_config = ConfigDict(extra="forbid")
+
+    category: Optional[str] = Field(None, max_length=255, description="Filter by product category (case-insensitive)")
+    brand: Optional[str] = Field(None, max_length=255, description="Filter by brand (case-insensitive)")
+    price_min: Optional[float] = Field(None, gt=0, description="Minimum price (inclusive)")
+    price_max: Optional[float] = Field(None, gt=0, description="Maximum price (inclusive)")
+    status: Optional[str] = Field(None, max_length=50, description="Filter by status e.g. ACTIVE, INACTIVE")
+
+
 class SearchRequest(BaseModel):
-    """Semantic/RAG search body. Only query and org_id accepted; extra fields rejected (422)."""
+    """Semantic/RAG search body."""
     model_config = ConfigDict(extra="forbid")
 
     query: str = Field(..., min_length=1, max_length=QUERY_MAX_LENGTH, description="Search query")
     org_id: Optional[str] = Field(None, max_length=255, description="If set, search only this org's products (MySQL org_id)")
-    
+    top_k: int = Field(5, ge=1, le=50, description="Number of results to return (default: 5)")
+    filters: Optional[SearchFilters] = Field(None, description="Optional post-retrieval filters")
+
     @field_validator('query')
     @classmethod
     def validate_query(cls, v: str) -> str:
         if not v or v.strip() == "":
             raise ValueError("Query can't be empty ")
         return v.strip()
+
+
 class CloudinaryVoiceSearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     
     cloudinary_url: str = Field(..., description="Cloudinary audio file URL")
     org_id: Optional[str] = Field(None, max_length=255)
     language_code: Optional[str] = Field(None, description="e.g. 'en', 'es'")
+
 
 class ProductResponse(BaseModel):
     org_id: Optional[str] = None
@@ -88,9 +105,11 @@ class ProductResponse(BaseModel):
     status: Optional[str] = None
     similarity_score: float
 
+
 class RAGResponse(BaseModel):
     answer: str
     sources: list[ProductResponse]
+
 
 class ErrorResponse(BaseModel):
     error: str
