@@ -125,6 +125,12 @@ class Settings(BaseSettings):
     SPEECH_MAX_AUDIO_SIZE_MB: int = 10
     SPEECH_SUPPORTED_FORMATS: list[str] = ["wav", "mp3", "flac", "ogg", "webm", "m4a"]
 
+    # Cloudflare R2
+    R2_ENDPOINT_URL: str | None = None
+    R2_ACCESS_KEY_ID: str | None = None
+    R2_SECRET_ACCESS_KEY: str | None = None
+    R2_BUCKET_NAME: str | None = None
+
    
 
 

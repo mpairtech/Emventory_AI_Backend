@@ -11,6 +11,7 @@ from app.db.models.vector import Base
 from app.core.cache.redis_client import redis_client
 from app.api.v1.routers.revoke_router import router as revoke_router
 
+
 from app.core.exceptions import (
     SearchServiceException,
     EmbeddingGenerationError,
@@ -167,3 +168,4 @@ async def general_exception_handler(request: Request, exc: Exception):
 app.include_router(router, prefix="/api/v1")
 app.include_router(speech_router, prefix="/api/v1")
 app.include_router(revoke_router, prefix="/api/v1")
+

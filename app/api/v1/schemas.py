@@ -1,7 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional
 
-# Max text length for embedding to avoid token limit / cost (Gemini)
+# Max text length for embedding to avoid token limit 
 EMBEDDING_TEXT_MAX_LENGTH = 8192
 QUERY_MAX_LENGTH = 500
 
@@ -13,8 +13,6 @@ class ProductIndexRequest(BaseModel):
     org_id: str = Field(..., min_length=1, max_length=255, description="Org ID (MySQL organization.org_id)")
     product_id: str = Field(..., min_length=1, max_length=50, description="Product ID (MySQL product.product_id)")
     name: str = Field(..., min_length=1, max_length=255, description="Product name")
-    
-    # Optional fields for better search
     category: Optional[str] = Field(None, max_length=255, description="Product category")
     brand: Optional[str] = Field(None, max_length=255, description="Product brand/manufacturer")
     description: Optional[str] = Field(None, max_length=5000, description="Product description/details")
@@ -23,14 +21,14 @@ class ProductIndexRequest(BaseModel):
     rating: Optional[float] = Field(None, ge=0, le=5, description="Average rating (0-5 stars)")
     review_count: Optional[int] = Field(None, ge=0, description="Number of reviews")
     status: Optional[str] = Field(None, max_length=50, description="Product status (e.g., ACTIVE, INACTIVE, DRAFT)")
-    
+
     @field_validator('name', mode="after")
     @classmethod
     def validate_not_empty(cls, v: str) -> str:
         if not v or v.strip() == "":
             raise ValueError("Field can't be empty")
         return v.strip()
-    
+
     @field_validator('category', 'brand', 'description', 'status', 'specifications', mode="after")
     @classmethod
     def strip_optional_fields(cls, v: Optional[str]) -> Optional[str]:
@@ -79,13 +77,13 @@ class SearchRequest(BaseModel):
     @classmethod
     def validate_query(cls, v: str) -> str:
         if not v or v.strip() == "":
-            raise ValueError("Query can't be empty ")
+            raise ValueError("Query can't be empty")
         return v.strip()
 
 
 class CloudinaryVoiceSearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    
+
     cloudinary_url: str = Field(..., description="Cloudinary audio file URL")
     org_id: Optional[str] = Field(None, max_length=255)
     language_code: Optional[str] = Field(None, description="e.g. 'en', 'es'")
@@ -114,3 +112,90 @@ class RAGResponse(BaseModel):
 class ErrorResponse(BaseModel):
     error: str
     detail: Optional[str] = None
+
+
+class R2VoiceSearchRequest(BaseModel):
+    """R2-based voice search. Extra fields rejected (422)."""
+    model_config = ConfigDict(extra="forbid")
+
+    file_url: str = Field(..., description="Cloudflare R2 presigned or public URL")
+    org_id: str = Field(..., max_length=255)
+    language: str = Field("en", description="ISO language code e.g. 'en', 'bn'")
+    top_k: int = Field(5, ge=1, le=50)
+    filters: Optional[SearchFilters] = None
+    provider: str = Field(None, description="LLM provider: 'openai'")
+
+
+# ---------------------------------------------------------------------------
+# AI Content Generation
+# ---------------------------------------------------------------------------
+
+class ProductData(BaseModel):
+    """Nested product fields for content generation."""
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., min_length=1, max_length=255)
+    category: Optional[str] = Field(None, max_length=255)
+    brand: Optional[str] = Field(None, max_length=255)
+    specifications: list[str] = Field(default_factory=list)  
+    price: Optional[float] = Field(None, gt=0)
+
+    @field_validator("name", mode="after")
+    @classmethod
+    def name_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Product name cannot be empty")
+        return v.strip()
+
+    @field_validator("specifications", mode="after") 
+    @classmethod
+    def clean_specifications(cls, v: list[str]) -> list[str]:
+        return [s.strip() for s in v if s and s.strip()]
+
+
+class ContentGenerationRequest(BaseModel):
+    """Request body for POST /api/v1/content/generate."""
+    model_config = ConfigDict(extra="forbid")
+
+    product_data: ProductData
+    query: Optional[str] = Field(None, max_length=500)
+    region: str = Field(..., min_length=1, max_length=100)
+    language: str = Field(..., min_length=2, max_length=10)
+    tone: str = Field(..., description="One of: formal, casual, persuasive")
+
+    @field_validator("tone", mode="after")
+    @classmethod
+    def validate_tone(cls, v: str) -> str:
+        allowed = {"formal", "casual", "persuasive"}
+        v_lower = v.lower().strip()
+        if v_lower not in allowed:
+            raise ValueError(f"Tone must be one of: {', '.join(sorted(allowed))}")
+        return v_lower
+
+    @field_validator("language", mode="after")
+    @classmethod
+    def normalise_language(cls, v: str) -> str:
+        return v.lower().strip()
+
+    @field_validator("region", mode="after")
+    @classmethod
+    def normalise_region(cls, v: str) -> str:
+        return v.upper().strip()
+
+
+class GeneratedContent(BaseModel):
+    """A generated text field with metadata."""
+    content: str
+    word_count: int
+    char_count: int
+
+
+class ContentGenerationResponse(BaseModel):
+    """Response body from POST /api/v1/content/generate."""
+    product_name: str
+    language: str
+    region: str
+    tone: str
+    description: GeneratedContent
+    feature_bullets: list[str]          
+    provider: str = "openai"

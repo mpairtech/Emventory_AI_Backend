@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 class CacheService:
     PREFIX_RAG = "rag"
     PREFIX_EMBEDDING = "emb"
+    PREFIX_CONTENT="content"
 
     @staticmethod
     def _normalize_for_cache(text: str) -> str:
@@ -201,5 +202,42 @@ class CacheService:
         except RedisError as e:
             logger.error(f"Redis error getting stats: {e}")
             return {"available": False, "error": str(e)}
-
+    @classmethod
+    def get_content(cls, field_key: str) -> Optional[Dict[str, Any]]:
+        redis = get_redis()
+        if not redis:
+            return None
+        try:
+            hash_key = f"{cls.PREFIX_CONTENT}:global"
+            cached_value = redis.hget(hash_key, field_key)
+            if cached_value:
+                logger.info(f"Cache HIT - Content (hash={field_key[:12]}...)")
+                return cls._deserialize(cached_value)
+            logger.debug("Cache MISS - Content")
+            return None
+        except RedisError as e:
+            logger.error(f"Redis error during Content GET: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error during Content cache GET: {e}")
+            return None
+ 
+    @classmethod
+    def set_content(cls, field_key: str, response: Dict[str, Any], ttl: Optional[int] = None) -> bool:
+        redis = get_redis()
+        if not redis:
+            return False
+        try:
+            hash_key = f"{cls.PREFIX_CONTENT}:global"
+            ttl = ttl or 3600  # 1 hour default
+            redis.hset(hash_key, field_key, cls._serialize(response))
+            redis.expire(hash_key, ttl)
+            logger.info(f"Cache SET - Content (hash={field_key[:12]}..., ttl={ttl}s)")
+            return True
+        except RedisError as e:
+            logger.error(f"Redis error during Content SET: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error during Content cache SET: {e}")
+            return False
 cache_service = CacheService()
