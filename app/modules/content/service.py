@@ -63,16 +63,17 @@ def _build_system_prompt(tone: str, language: str, region: str) -> str:
 
 def _build_social_system_prompt(tone: str, language: str, region: str) -> str:
     tone_guidance = {
-        "formal":     "Write in a professional, brand-authoritative voice suitable for LinkedIn and corporate Facebook pages.",
-        "casual":     "Write in a friendly, conversational voice with energy — suitable for Instagram and Facebook consumer audiences.",
-        "persuasive": "Write in a benefit-driven, excitement-building voice that drives engagement and purchase intent.",
+        "formal":     "Write in a professional, brand-authoritative voice with controlled excitement — suitable for corporate Facebook pages.",
+        "casual":     "Write in a friendly, hype-driven conversational voice with energy and emojis — suitable for Instagram and Facebook consumer audiences.",
+        "persuasive": "Write in a high-energy, benefit-driven voice that creates urgency, excitement, and strong purchase intent.",
     }
     return (
-        f"You are an expert social media content writer specialising in product promotion posts. "
+        f"You are a high-energy social media copywriter specialising in ecommerce product promotions for Facebook and Instagram. "
         f"Write all output in {language.upper()} language, optimised for the {region} market. "
-        f"Your content is a single social media post suitable for Facebook, Instagram, Twitter/X, and LinkedIn simultaneously. "
-        f"Tone: {tone_guidance.get(tone, 'engaging and informative')} "
-        f"Include relevant hashtags as a separate list. "
+        f"Your job is to write scroll-stopping, hype-driven captions that make people want to buy immediately. "
+        f"Tone: {tone_guidance.get(tone, 'hype-driven and exciting')} "
+        f"NEVER use hollow filler phrases like 'redefining excellence', 'designed for your lifestyle', 'take it to the next level', or 'perfect for everyone'. "
+        f"NEVER write generic ad copy — every sentence must reference the actual product data provided. "
         f"Return ONLY valid JSON — no markdown, no code fences, no preamble."
     )
 
@@ -109,29 +110,57 @@ Return ONLY the JSON object. Nothing else."""
 
 def _build_social_user_prompt(product_summary: str, query: Optional[str]) -> str:
     context_hint = f'\nContext hint: "{query}"' if query else ""
-    return f"""Generate a social media product promotion post for this product:
+    return f"""Generate a Facebook and Instagram product promotion caption for this product:
 
 {product_summary}{context_hint}
 
 Return a single JSON object with exactly these keys:
 {{
-  "post_body": "<the social media post text — follow the rules below>",
+  "post_body": "<the full caption — follow ALL rules below>",
   "hashtags": ["hashtag1", "hashtag2", "hashtag3", "hashtag4", "hashtag5"]
 }}
 
-post_body rules:
-- Write ONE post body suitable for Facebook, Instagram, Twitter/X, and LinkedIn
-- Length: 80-150 words (short enough for Twitter/X, rich enough for Facebook/LinkedIn)
-- Open with an attention-grabbing line about the product
-- Mention 2-3 key specs or benefits naturally in the copy
-- End with a soft call-to-action (e.g. "Available now", "Check it out", "Shop today")
-- Do NOT include hashtags inside post_body — they go in the hashtags list only
-- Use ONLY facts from the product data. Do NOT invent specs or features
+post_body rules — follow this EXACT structure:
+
+1. HOOK LINE (1 line):
+   - Start with an emoji (🔥 or ⚡ or 🚨)
+   - Address a real pain point or desire the product solves (e.g. bad camera, slow performance, short battery)
+   - Immediately position this product as the fix
+   - Example pattern: "🔥 Tired of [problem]? Meet [Product Name] — [punchy solution in bold using **text**]"
+
+2. BOLD POWER STATEMENT (1 line):
+   - Bold the product name and one punchy benefit statement
+   - Format: **[Product Name] — [One punchy benefit statement]**
+
+3. KEY HIGHLIGHTS (bullet list):
+   - Prefix: "✅ Key Highlights:"
+   - 3–4 bullet points using • symbol
+   - Each bullet = benefit-driven (what the user GAINS), not just spec names
+   - Good: "• Capture pro-level shots even in low light"
+   - Bad: "• 50MP camera"
+
+4. SPECS AT A GLANCE (bullet list):
+   - Prefix: "📋 Specs at a Glance:"
+   - 3–4 bullet points using • symbol
+   - Factual, concise spec values only (e.g. "• RAM: 12GB", "• Display: 6.7″ AMOLED 120Hz")
+   - Use ONLY specs from the product data — do NOT invent values
+
+5. ADDRESS BLOCK:
+   - If address data is available: "📍 Find Us At:\\n[address]"
+   - If address is missing: "📍 Visit our store for details"
+
+6. CONTACT BLOCK:
+   - If contact data is available: "📞 Contact Us:\\n[phone or email]"
+   - If contact is missing: omit this block entirely
+
+DO NOT include hashtags inside post_body — they go in the hashtags list only.
+DO NOT use hollow filler phrases like "redefining excellence" or "designed for your lifestyle".
+Total post_body length: 100–180 words.
 
 hashtags rules:
-- Exactly 5 hashtags
-- Each is a single word or compound word with no spaces (e.g. "TechDeals", "Samsung", "Smartphone")
-- Include: brand name, product category, 1-2 generic tech/product tags, 1 regional/market tag
+- Between 5 and 10 hashtags
+- Each is a single word or compound word, no spaces (e.g. "TechDeals", "Samsung", "Smartphone")
+- Include: brand name, product name/model, product category, 1–2 generic tech tags, 1 regional/market tag
 - No # symbol in the list — just the word
 
 Return ONLY the JSON object. Nothing else."""
