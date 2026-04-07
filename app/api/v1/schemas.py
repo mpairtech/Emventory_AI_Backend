@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import Optional
+from typing import Optional,Literal
 
 # Max text length for embedding to avoid token limit 
 EMBEDDING_TEXT_MAX_LENGTH = 8192
@@ -199,3 +199,24 @@ class ContentGenerationResponse(BaseModel):
     description: GeneratedContent
     feature_bullets: list[str]          
     provider: str = "openai"
+class SocialPostRequest(BaseModel):
+    product_data: ProductData
+    region: str = "BD"
+    language: str = "english"
+    tone: Literal["formal", "casual", "persuasive"] = "casual"
+    query: Optional[str] = None
+
+
+class SocialPostContent(BaseModel):
+    post_body: str
+    hashtags: list[str]
+    char_count: int
+
+
+class SocialPostResponse(BaseModel):
+    product_name: str
+    language: str
+    region: str
+    tone: str
+    post: SocialPostContent
+    provider: str

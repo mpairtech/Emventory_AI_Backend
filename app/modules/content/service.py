@@ -61,6 +61,22 @@ def _build_system_prompt(tone: str, language: str, region: str) -> str:
     )
 
 
+def _build_social_system_prompt(tone: str, language: str, region: str) -> str:
+    tone_guidance = {
+        "formal":     "Write in a professional, brand-authoritative voice suitable for LinkedIn and corporate Facebook pages.",
+        "casual":     "Write in a friendly, conversational voice with energy — suitable for Instagram and Facebook consumer audiences.",
+        "persuasive": "Write in a benefit-driven, excitement-building voice that drives engagement and purchase intent.",
+    }
+    return (
+        f"You are an expert social media content writer specialising in product promotion posts. "
+        f"Write all output in {language.upper()} language, optimised for the {region} market. "
+        f"Your content is a single social media post suitable for Facebook, Instagram, Twitter/X, and LinkedIn simultaneously. "
+        f"Tone: {tone_guidance.get(tone, 'engaging and informative')} "
+        f"Include relevant hashtags as a separate list. "
+        f"Return ONLY valid JSON — no markdown, no code fences, no preamble."
+    )
+
+
 def _build_user_prompt(product_summary: str, query: Optional[str]) -> str:
     context_hint = f'\nContext hint: "{query}"' if query else ""
     return f"""Generate ecommerce product listing page content for this product:
@@ -91,6 +107,36 @@ feature_bullets rules:
 Return ONLY the JSON object. Nothing else."""
 
 
+def _build_social_user_prompt(product_summary: str, query: Optional[str]) -> str:
+    context_hint = f'\nContext hint: "{query}"' if query else ""
+    return f"""Generate a social media product promotion post for this product:
+
+{product_summary}{context_hint}
+
+Return a single JSON object with exactly these keys:
+{{
+  "post_body": "<the social media post text — follow the rules below>",
+  "hashtags": ["hashtag1", "hashtag2", "hashtag3", "hashtag4", "hashtag5"]
+}}
+
+post_body rules:
+- Write ONE post body suitable for Facebook, Instagram, Twitter/X, and LinkedIn
+- Length: 80-150 words (short enough for Twitter/X, rich enough for Facebook/LinkedIn)
+- Open with an attention-grabbing line about the product
+- Mention 2-3 key specs or benefits naturally in the copy
+- End with a soft call-to-action (e.g. "Available now", "Check it out", "Shop today")
+- Do NOT include hashtags inside post_body — they go in the hashtags list only
+- Use ONLY facts from the product data. Do NOT invent specs or features
+
+hashtags rules:
+- Exactly 5 hashtags
+- Each is a single word or compound word with no spaces (e.g. "TechDeals", "Samsung", "Smartphone")
+- Include: brand name, product category, 1-2 generic tech/product tags, 1 regional/market tag
+- No # symbol in the list — just the word
+
+Return ONLY the JSON object. Nothing else."""
+
+
 # ---------------------------------------------------------------------------
 # Public service
 # ---------------------------------------------------------------------------
@@ -109,15 +155,47 @@ class ContentGenerationService:
         tone: str,
         query: Optional[str] = None,
     ) -> dict:
-        """
-        Generate ecommerce product listing page content via OpenAI.
-
-        Returns dict with keys: description, feature_bullets
-        """
+        """Generate ecommerce product listing page content via OpenAI."""
         product_summary = _build_product_summary(name, category, brand, specifications, price)
         system_prompt   = _build_system_prompt(tone, language, region)
         user_prompt     = _build_user_prompt(product_summary, query)
 
+        raw = ContentGenerationService._call_openai(system_prompt, user_prompt, name, "ContentGen")
+        return ContentGenerationService._parse_and_validate(raw, {"description", "feature_bullets"})
+
+    @staticmethod
+    def generate_social_post(
+        name: str,
+        category: Optional[str],
+        brand: Optional[str],
+        specifications: list[str],
+        price: Optional[float],
+        region: str,
+        language: str,
+        tone: str,
+        query: Optional[str] = None,
+    ) -> dict:
+        """Generate a social media post with hashtags via OpenAI."""
+        product_summary = _build_product_summary(name, category, brand, specifications, price)
+        system_prompt   = _build_social_system_prompt(tone, language, region)
+        user_prompt     = _build_social_user_prompt(product_summary, query)
+
+        raw = ContentGenerationService._call_openai(system_prompt, user_prompt, name, "SocialGen")
+
+        result = ContentGenerationService._parse_and_validate(raw, {"post_body", "hashtags"})
+
+        if not isinstance(result.get("hashtags"), list):
+            raise LLMGenerationError("hashtags must be a list")
+
+        return {
+            "post_body": str(result["post_body"]).strip(),
+            "hashtags":  [str(h).strip().lstrip("#") for h in result["hashtags"] if h],
+        }
+
+    # ── Shared OpenAI call ─────────────────────────────────────────────────
+
+    @staticmethod
+    def _call_openai(system_prompt: str, user_prompt: str, name: str, log_tag: str) -> str:
         max_tokens = 1500 if "mini" in settings.OPENAI_MODEL.lower() else 2048
 
         try:
@@ -143,11 +221,8 @@ class ContentGenerationService:
             if not raw:
                 raise LLMGenerationError("OpenAI returned empty content")
 
-            logger.info(
-                "[ContentGen] Generated for '%s' | tone=%s | lang=%s | region=%s",
-                name, tone, language, region,
-            )
-            return ContentGenerationService._parse_and_validate(raw)
+            logger.info("[%s] Generated for '%s'", log_tag, name)
+            return raw
 
         except LLMGenerationError:
             raise
@@ -156,33 +231,27 @@ class ContentGenerationService:
             err_msg  = str(e).lower()
 
             if "rate limit" in err_msg or "quota" in err_msg or "429" in err_msg or "RateLimitError" in err_type:
-                logger.warning("[ContentGen] Rate limit hit: %s", e)
+                logger.warning("[%s] Rate limit hit: %s", log_tag, e)
                 raise RateLimitError(f"OpenAI rate limit exceeded: {e}")
-
             if "auth" in err_msg or "api key" in err_msg or "401" in err_msg:
                 raise LLMGenerationError(f"OpenAI authentication error: {e}")
-
             if "connection" in err_msg or "timeout" in err_msg:
                 raise LLMGenerationError(f"OpenAI network error: {e}")
 
-            raise LLMGenerationError(f"Content generation failed: {e}")
+            raise LLMGenerationError(f"Generation failed: {e}")
+
+    # ── Shared parse & validate ────────────────────────────────────────────
 
     @staticmethod
-    def _parse_and_validate(raw: str) -> dict:
+    def _parse_and_validate(raw: str, required_keys: set) -> dict:
         try:
             data = json.loads(raw)
         except json.JSONDecodeError as e:
             logger.error("[ContentGen] JSON parse error: %s | raw: %s", e, raw[:300])
             raise LLMGenerationError(f"OpenAI returned invalid JSON: {e}")
 
-        missing = {"description", "feature_bullets"} - set(data.keys())
+        missing = required_keys - set(data.keys())
         if missing:
             raise LLMGenerationError(f"OpenAI response missing keys: {missing}")
 
-        if not isinstance(data.get("feature_bullets"), list):
-            raise LLMGenerationError("feature_bullets must be a list")
-
-        return {
-            "description":     str(data["description"]).strip(),
-            "feature_bullets": [str(b).strip() for b in data["feature_bullets"] if b],
-        }
+        return data

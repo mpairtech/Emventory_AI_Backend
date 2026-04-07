@@ -4,6 +4,9 @@ from app.api.v1.schemas import (
     ContentGenerationRequest,
     ContentGenerationResponse,
     GeneratedContent,
+    SocialPostRequest,
+    SocialPostResponse,
+    SocialPostContent,
 )
 from app.modules.content.service import ContentGenerationService
 from app.core.exceptions import LLMGenerationError, RateLimitError
@@ -17,6 +20,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/content", tags=["AI Content Generation"])
 
 CONTENT_CACHE_TTL = 3600  # 1 hour
+SOCIAL_CACHE_TTL  = 3600  # 1 hour
 
 
 def _build_field_key(request: ContentGenerationRequest) -> str:
@@ -36,6 +40,26 @@ def _build_field_key(request: ContentGenerationRequest) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _build_social_key(request: SocialPostRequest) -> str:
+    """Deterministic SHA256 cache key for social post requests."""
+    pd = request.product_data
+    raw = json.dumps({
+        "name":           pd.name,
+        "category":       pd.category,
+        "brand":          pd.brand,
+        "specifications": sorted(pd.specifications),
+        "price":          pd.price,
+        "query":          request.query,
+        "region":         request.region,
+        "language":       request.language,
+        "tone":           request.tone,
+        "type":           "social",          # prevents collision with /generate keys
+    }, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+# ── Product description endpoint ───────────────────────────────────────────
+
 @router.post(
     "/generate",
     response_model=ContentGenerationResponse,
@@ -49,7 +73,6 @@ def generate_content(
     pd = request.product_data
     field_key = _build_field_key(request)
 
-    # ── 1. Cache read ──────────────────────────────────────────────────────
     try:
         cached = cache_service.get_content(field_key)
         if cached:
@@ -57,7 +80,6 @@ def generate_content(
     except Exception as e:
         logger.warning("[ContentGen] Cache read error: %s", e)
 
-    # ── 2. Generate via OpenAI ─────────────────────────────────────────────
     try:
         result = ContentGenerationService.generate(
             name=pd.name,
@@ -70,13 +92,10 @@ def generate_content(
             tone=request.tone,
             query=request.query,
         )
-
     except RateLimitError as e:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
-
     except LLMGenerationError as e:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
-
     except Exception as e:
         logger.error("[ContentGen] Unexpected error: %s", e, exc_info=True)
         raise HTTPException(
@@ -84,9 +103,7 @@ def generate_content(
             detail="Content generation failed unexpectedly",
         )
 
-    # ── 3. Build response ──────────────────────────────────────────────────
     desc = result["description"]
-
     response = ContentGenerationResponse(
         product_name=pd.name,
         language=request.language,
@@ -101,10 +118,80 @@ def generate_content(
         provider="openai",
     )
 
-    # ── 4. Cache write ─────────────────────────────────────────────────────
     try:
         cache_service.set_content(field_key, response.model_dump(), ttl=CONTENT_CACHE_TTL)
     except Exception as e:
         logger.warning("[ContentGen] Cache write error: %s", e)
+
+    return response
+
+
+# ── Social media post endpoint ─────────────────────────────────────────────
+
+@router.post(
+    "/social",
+    response_model=SocialPostResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Generate a social media post with hashtags from product data",
+)
+def generate_social_post(
+    request: SocialPostRequest,
+    _: None = Depends(verify_api_key),
+):
+    pd = request.product_data
+    cache_key = _build_social_key(request)
+
+    # 1. Cache read
+    try:
+        cached = cache_service.get_content(cache_key)
+        if cached:
+            return SocialPostResponse(**cached)
+    except Exception as e:
+        logger.warning("[SocialGen] Cache read error: %s", e)
+
+    # 2. Generate
+    try:
+        result = ContentGenerationService.generate_social_post(
+            name=pd.name,
+            category=pd.category,
+            brand=pd.brand,
+            specifications=pd.specifications,
+            price=pd.price,
+            region=request.region,
+            language=request.language,
+            tone=request.tone,
+            query=request.query,
+        )
+    except RateLimitError as e:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
+    except LLMGenerationError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+    except Exception as e:
+        logger.error("[SocialGen] Unexpected error: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Social post generation failed unexpectedly",
+        )
+
+    # 3. Build response
+    post_body = result["post_body"]
+    response = SocialPostResponse(
+        product_name=pd.name,
+        language=request.language,
+        region=request.region,
+        tone=request.tone,
+        post=SocialPostContent(
+            post_body=post_body,
+            hashtags=result["hashtags"],
+            char_count=len(post_body),
+        ),
+        provider="openai",
+    )
+
+    # 4. Cache write
+    try:
+        cache_service.set_content(cache_key, response.model_dump(), ttl=SOCIAL_CACHE_TTL)
+    except Exception as e:
+        logger.warning("[SocialGen] Cache write error: %s", e)
 
     return response
