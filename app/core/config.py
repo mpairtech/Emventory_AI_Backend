@@ -113,6 +113,7 @@ class Settings(BaseSettings):
     REDIS_DB: int = 0
     REDIS_PASSWORD: str | None = None
     REDIS_ENABLED: bool = True  # Feature flag to enable/disable caching
+    DISABLE_CACHE: bool = False
     REDIS_TTL_RAG: int = 900  # 15 minutes for RAG responses
     REDIS_TTL_EMBEDDINGS: int = 3600  # 1 hour for embeddings
     REDIS_MAX_CONNECTIONS: int = 10

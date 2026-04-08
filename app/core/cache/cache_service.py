@@ -204,6 +204,8 @@ class CacheService:
             return {"available": False, "error": str(e)}
     @classmethod
     def get_content(cls, field_key: str) -> Optional[Dict[str, Any]]:
+        if settings.DISABLE_CACHE:
+            return None
         redis = get_redis()
         if not redis:
             return None
@@ -224,6 +226,8 @@ class CacheService:
  
     @classmethod
     def set_content(cls, field_key: str, response: Dict[str, Any], ttl: Optional[int] = None) -> bool:
+        if settings.DISABLE_CACHE:
+            return False
         redis = get_redis()
         if not redis:
             return False

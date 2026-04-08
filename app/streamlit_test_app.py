@@ -381,7 +381,7 @@ with col8:
 with col9:
     query = st.text_input("Search Context")
 
-lang_map = {"English": "english", "Bengali (বাংলা)": "bn", "Arabic": "ar"}
+lang_map = {"English": "english", "Bengali (বাংলা)": "Bengali", "Arabic": "ar"}
 
 def build_payload() -> dict | None:
     if not name.strip():
