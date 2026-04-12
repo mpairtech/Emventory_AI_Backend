@@ -40,7 +40,7 @@ def get_active_provider() -> str:
     Settings already validates and normalizes the value, so we can use it directly.
     """
     provider = settings.ACTIVE_PROVIDER
-    logger.info(f"Using active provider: {provider} (from ACTIVE_PROVIDER env)")
+    logger.info("Using active provider: %s (from ACTIVE_PROVIDER env)", provider)
     return provider
 
 
@@ -69,7 +69,7 @@ def verify_api_key(request: Request):
         logger.warning("API key verification failed: missing X-Key-Input header")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing X-Key-Input header (e.g. org_id). API key is generated from this input.",
+            detail="Missing X-Key-Input header.",
         )
 
     expected_key = _generate_key(key_input)
@@ -86,16 +86,22 @@ def verify_api_key(request: Request):
     )
 
     if not key or not hmac.compare_digest(key, expected_key):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API key")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API key.",
+        )
 
 
-# To call /generate-key: send X-Key-Input: "generate" and X-API-Key: HMAC(API_SECRET, "generate")
 def verify_generate_key(request: Request):
     key_input = request.headers.get("X-Key-Input", "").strip()
     key = request.headers.get("X-API-Key", "").strip()
     expected = _generate_key("generate")
     if key_input != "generate" or not key or not hmac.compare_digest(key, expected):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Use X-Key-Input: generate and X-API-Key: HMAC(API_SECRET, 'generate')")
+        # Generic message — do not leak how the key scheme works
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized.",
+        )
 
 
 @router.post("/generate-key", summary="Generate API key from user input")
@@ -111,7 +117,7 @@ def generate_key(
 
 
 def _safe_float(v):
-    """Convert to float for JSON; NaN/Inf -> None so Postman and other clients get valid JSON."""
+    """Convert to float for JSON; NaN/Inf -> None so clients get valid JSON."""
     if v is None:
         return None
     try:
@@ -124,20 +130,22 @@ def _safe_float(v):
 
 
 def _safe_int(v):
-    """Convert to int for JSON; invalid/NaN -> None."""
+    """Convert to int for JSON; invalid/NaN/Inf -> None."""
     if v is None:
         return None
     try:
-        x = int(float(v))
-        if math.isnan(x) or math.isinf(x):
+        f = float(v)
+        # NaN/Inf check must happen on the float before casting to int,
+        # since int values can never be NaN or Inf.
+        if math.isnan(f) or math.isinf(f):
             return None
-        return x
+        return int(f)
     except (TypeError, ValueError):
         return None
 
 
 def _list_indexed_products(org_id: str | None, limit: int, db: Session):
-    """Helper function to list indexed products."""
+    """Helper to list indexed products."""
     try:
         q = select(
             ProductVector.org_id,
@@ -159,52 +167,46 @@ def _list_indexed_products(org_id: str | None, limit: int, db: Session):
         total = len(rows)
         items = [
             {
-                "org_id": r[0],
-                "product_id": r[1],
-                "name": r[2],
-                "category": r[3],
-                "brand": r[4],
-                "description": r[5],
-                "specifications": r[6],
-                "price": _safe_float(r[7]),
-                "rating": _safe_float(r[8]),
-                "review_count": _safe_int(r[9]),
-                "status": r[10]
+                "org_id":          r[0],
+                "product_id":      r[1],
+                "name":            r[2],
+                "category":        r[3],
+                "brand":           r[4],
+                "description":     r[5],
+                "specifications":  r[6],
+                "price":           _safe_float(r[7]),
+                "rating":          _safe_float(r[8]),
+                "review_count":    _safe_int(r[9]),
+                "status":          r[10],
             }
             for r in rows
         ]
-        # Explicit JSONResponse with charset so Postman/other clients parse correctly
         return JSONResponse(
             content={"total": total, "org_id_filter": org_id, "items": items},
             media_type="application/json; charset=utf-8",
         )
     except Exception as e:
-        logger.error(f"List indexed error: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        logger.error("List indexed error: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to list indexed products.",
+        )
 
 
+# /indexed and /indexed/list were duplicate routes doing identical work.
+# Consolidated into a single endpoint at /indexed.
 @router.post(
     "/indexed",
-    summary="List indexed products (POST with JSON body)",
+    summary="List indexed products",
     response_model=None,
-    status_code=200
+    status_code=200,
 )
-def list_indexed_post_direct(
+def list_indexed(
     body: ListIndexedRequest,
     _: None = Depends(verify_api_key),
     db: Session = Depends(get_db),
 ):
-    """List indexed products accepting org_id and limit in JSON body."""
-    return _list_indexed_products(org_id=body.org_id, limit=body.limit, db=db)
-
-
-@router.post("/indexed/list", summary="List indexed products (POST with JSON body)")
-def list_indexed_post(
-    body: ListIndexedRequest,
-    _: None = Depends(verify_api_key),
-    db: Session = Depends(get_db),
-):
-    """Same as GET /indexed but accepts org_id and limit in JSON body. Use this in Postman with POST + body."""
+    """List indexed products, filtered by org_id and limited by limit."""
     return _list_indexed_products(org_id=body.org_id, limit=body.limit, db=db)
 
 
@@ -217,43 +219,36 @@ def index_product(
     try:
         payload = request.model_dump()
         SearchService.index_product(db, payload)
-
         return {
-            "status": "indexed",
-            "org_id": request.org_id,
+            "status":     "indexed",
+            "org_id":     request.org_id,
             "product_id": request.product_id,
-            "message": f"Product '{request.name}' indexed successfully"
+            "message":    f"Product '{request.name}' indexed successfully",
         }
 
     except RateLimitError as e:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
 
     except EmbeddingGenerationError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Embedding service error: {str(e)}"
+            detail=f"Embedding service error: {e}",
         )
 
     except DatabaseError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database error: {str(e)}"
+            detail=f"Database error: {e}",
         )
 
     except SearchServiceException as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
+        logger.error("Unexpected error in index_product: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred"
+            detail="An unexpected error occurred.",
         )
 
 
@@ -274,62 +269,60 @@ def semantic_search(
         return {"results": results, "query": request.query}
 
     except RateLimitError as e:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
 
     except EmbeddingGenerationError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Embedding service error: {str(e)}"
+            detail=f"Embedding service error: {e}",
         )
 
     except VectorSearchError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Search error: {str(e)}"
+            detail=f"Search error: {e}",
         )
 
     except DatabaseError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database error: {str(e)}"
+            detail=f"Database error: {e}",
         )
 
     except SearchServiceException as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+        logger.error("Unexpected error in semantic_search: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred"
+            detail="An unexpected error occurred.",
         )
 
 
 @router.post("/rag", response_model=RAGResponse)
 def rag_search(
     request: SearchRequest,
-    provider: str | None = Query(None, description="LLM provider: 'gemini' or 'openai'. If not provided, uses ACTIVE_PROVIDER env variable."),
+    provider: str | None = Query(
+        None,
+        description="LLM provider: 'gemini' or 'openai'. Defaults to ACTIVE_PROVIDER env variable.",
+    ),
     _: None = Depends(verify_api_key),
     db: Session = Depends(get_db),
 ):
     """
-    RAG search endpoint that supports provider selection.
-    - If provider query parameter is provided, uses that provider.
-    - Otherwise, uses the active provider from ACTIVE_PROVIDER env variable.
-    - Falls back to the other provider if the selected one fails.
+    RAG search with automatic fallback.
+    - Uses the requested provider, or ACTIVE_PROVIDER if not specified.
+    - On LLMGenerationError, retries with the other provider.
+    - RateLimitError does NOT trigger a fallback — it returns 429 immediately,
+      since the fallback provider is likely also rate-limited or would waste quota.
     """
     if provider:
         provider = provider.lower().strip()
-        if provider not in ["gemini", "openai"]:
+        if provider not in ("gemini", "openai"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Provider must be either 'gemini' or 'openai'"
+                detail="Provider must be 'gemini' or 'openai'.",
             )
         selected_provider = provider
     else:
@@ -337,7 +330,10 @@ def rag_search(
 
     fallback_provider = "openai" if selected_provider == "gemini" else "gemini"
 
-    logger.info(f"RAG search request - Query: '{request.query}', Org ID: {request.org_id}, Using provider: {selected_provider}")
+    logger.info(
+        "RAG search — query: '%s', org_id: %s, provider: %s",
+        request.query, request.org_id, selected_provider,
+    )
 
     try:
         result = SearchService.rag_search(
@@ -348,12 +344,22 @@ def rag_search(
             top_k=request.top_k,
             filters=request.filters,
         )
-        logger.info(f"RAG search completed successfully using {selected_provider}")
+        logger.info("RAG search completed using %s", selected_provider)
         return result
 
-    except (LLMGenerationError, RateLimitError) as e:
+    except RateLimitError as e:
+        # Do not fall back on rate limit — failing fast is cheaper and more honest.
+        logger.warning("Rate limit hit on provider '%s': %s", selected_provider, e)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Rate limit reached: {e}",
+        )
+
+    except LLMGenerationError as e:
+        # LLM error is worth retrying on the fallback provider.
         logger.warning(
-            f"Provider '{selected_provider}' failed: {str(e)}. Trying fallback '{fallback_provider}'"
+            "LLM error on '%s': %s. Trying fallback '%s'",
+            selected_provider, e, fallback_provider,
         )
         try:
             result = SearchService.rag_search(
@@ -364,49 +370,45 @@ def rag_search(
                 top_k=request.top_k,
                 filters=request.filters,
             )
-            logger.info(f"Fallback provider '{fallback_provider}' succeeded")
+            logger.info("Fallback provider '%s' succeeded", fallback_provider)
             return result
         except Exception as fallback_error:
-            logger.error(f"Both active and fallback providers failed. Original: {str(e)}, Fallback: {str(fallback_error)}")
-            if isinstance(e, RateLimitError):
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"Both providers rate limited. Original: {str(e)}"
-                )
+            logger.error(
+                "Both providers failed. Primary (%s): %s | Fallback (%s): %s",
+                selected_provider, e, fallback_provider, fallback_error,
+                exc_info=True,
+            )
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"AI generation error (both providers failed): {str(e)}"
+                detail="AI generation failed on all available providers.",
             )
 
     except EmbeddingGenerationError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Embedding service error: {str(e)}"
+            detail=f"Embedding service error: {e}",
         )
 
     except VectorSearchError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Search error: {str(e)}"
+            detail=f"Search error: {e}",
         )
 
     except DatabaseError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database error: {str(e)}"
+            detail=f"Database error: {e}",
         )
 
     except SearchServiceException as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+        logger.error("Unexpected error in rag_search: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred"
+            detail="An unexpected error occurred.",
         )
 
 
@@ -416,8 +418,9 @@ def debug_search(
     _: None = Depends(verify_api_key),
     db: Session = Depends(get_db),
 ):
-    #if not settings.DEBUG_MODE:
-        #raise HTTPException(status_code=404, detail="Not found")
+    # Guard: only available in DEBUG_MODE. Never expose in production.
+    if not settings.DEBUG_MODE:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found.")
 
     try:
         query = request.query
@@ -452,67 +455,64 @@ def debug_search(
         """)
 
         results = db.execute(sql, params).fetchall()
-
         query_words = set(query.lower().split())
 
         debug_results = []
         for row in results:
-            # Build product text from all searchable fields
-            product_text_parts = [row[2] or "", row[3] or "", row[4] or "", row[5] or "", row[6] or ""]
-            product_text = " ".join(product_text_parts).lower()
+            product_text = " ".join(filter(None, [row[2], row[3], row[4], row[5], row[6]])).lower()
             product_words = set(product_text.split())
             matching_words = query_words.intersection(product_words)
 
             debug_results.append({
-                "org_id": row[0],
-                "product_id": row[1],
-                "name": row[2],
-                "category": row[3],
-                "brand": row[4],
-                "description": row[5],
-                "specifications": row[6],
-                "price": _safe_float(row[7]),
-                "rating": _safe_float(row[8]),
-                "review_count": _safe_int(row[9]),
-                "status": row[10],
-                "similarity_score": _safe_float(row[11]) or 0.0,
-                "cosine_distance": _safe_float(row[13]) or 0.0,
-                "matching_words": list(matching_words),
-                "total_query_words": len(query_words),
-                "total_product_words": len(product_words)
+                "org_id":              row[0],
+                "product_id":          row[1],
+                "name":                row[2],
+                "category":            row[3],
+                "brand":               row[4],
+                "description":         row[5],
+                "specifications":      row[6],
+                "price":               _safe_float(row[7]),
+                "rating":              _safe_float(row[8]),
+                "review_count":        _safe_int(row[9]),
+                "status":              row[10],
+                "similarity_score":    _safe_float(row[11]) or 0.0,
+                "euclidean_distance":  _safe_float(row[12]) or 0.0,
+                "cosine_distance":     _safe_float(row[13]) or 0.0,
+                "matching_words":      list(matching_words),
+                "total_query_words":   len(query_words),
+                "total_product_words": len(product_words),
             })
 
         return {
-            "query": query,
+            "query":       query,
             "query_words": list(query_words),
-            "results": debug_results
+            "results":     debug_results,
         }
 
     except RateLimitError as e:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
 
     except EmbeddingGenerationError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Embedding service error: {str(e)}"
+            detail=f"Embedding service error: {e}",
         )
 
     except VectorSearchError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Search error: {str(e)}",
+            detail=f"Search error: {e}",
         )
+
     except DatabaseError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database error: {str(e)}",
+            detail=f"Database error: {e}",
         )
+
     except Exception as e:
-        logger.error(f"Error in debug search: {str(e)}")
+        logger.error("Unexpected error in debug_search: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Debug search failed",
+            detail="Debug search failed.",
         )

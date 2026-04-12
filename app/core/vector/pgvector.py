@@ -7,6 +7,9 @@ import math
 logger = logging.getLogger(__name__)
 
 
+# NOTE: _safe_float and _safe_int are duplicated from search.py.
+# TODO: Move both to app/core/utils.py and import from there.
+
 def _safe_float(v):
     if v is None:
         return None
@@ -21,29 +24,49 @@ def _safe_int(v):
     if v is None:
         return None
     try:
-        x = int(float(v))
-        return None if (math.isnan(x) or math.isinf(x)) else x
+        f = float(v)
+        # NaN/Inf check must happen on the float before casting —
+        # int values can never be NaN or Inf.
+        if math.isnan(f) or math.isinf(f):
+            return None
+        return int(f)
     except (TypeError, ValueError):
         return None
 
+
 class VectorStore:
-    
+
     @staticmethod
-    def search(db, embedding, org_id=None):
-        """Search by embedding. If org_id is set, only products for that org are returned (MySQL org-based)."""
+    def search(db, embedding, org_id=None, top_k: int = 10):
+        """
+        Search product_vectors by cosine similarity against the given embedding.
+
+        Uses PostgreSQL + pgvector (<=> cosine distance operator).
+        If org_id is provided, results are filtered to that organisation only.
+
+        Args:
+            db:        SQLAlchemy Session.
+            embedding: List of floats (must match the indexed vector dimension).
+            org_id:    Optional organisation filter.
+            top_k:     Maximum number of results to return (default 10).
+        """
+        if not embedding:
+            raise VectorSearchError("Embedding cannot be empty.")
+
         try:
-            if not embedding or len(embedding) == 0:
-                raise VectorSearchError("Embedding cannot be empty")
-            
             embedding_str = '[' + ','.join(map(str, embedding)) + ']'
-            params = {"q": embedding_str}
-            
+            params = {"q": embedding_str, "top_k": top_k}
+
+            # where_clause is constructed from a hardcoded string only —
+            # org_id itself is always passed as a bound parameter, never interpolated.
             where_clause = "WHERE org_id = :org_id" if org_id else ""
             if org_id:
                 params["org_id"] = org_id
-            
-            sql = text(f"""
-                SELECT org_id, product_id,
+
+            sql = text(
+                """
+                SELECT org_id,
+                       product_id,
                        name,
                        category,
                        brand,
@@ -57,41 +80,42 @@ class VectorStore:
                 FROM product_vectors
                 {where_clause}
                 ORDER BY embedding <=> CAST(:q AS vector)
-                LIMIT 10
-            """)
-            
-            results = db.execute(sql, params).fetchall()
-            
+                LIMIT :top_k
+                """.format(where_clause=where_clause)
+            )
+
+            rows = db.execute(sql, params).fetchall()
+
             return [
                 {
-                    "org_id": row[0],
-                    "product_id": row[1],
-                    "name": row[2],
-                    "category": row[3],
-                    "brand": row[4],
-                    "description": row[5],
-                    "specifications": row[6],
-                    "price": _safe_float(row[7]),
-                    "rating": _safe_float(row[8]),
-                    "review_count": _safe_int(row[9]),
-                    "status": row[10],
-                    "similarity_score": _safe_float(row[11]) or 0.0,
+                    "org_id":           row._mapping["org_id"],
+                    "product_id":       row._mapping["product_id"],
+                    "name":             row._mapping["name"],
+                    "category":         row._mapping["category"],
+                    "brand":            row._mapping["brand"],
+                    "description":      row._mapping["description"],
+                    "specifications":   row._mapping["specifications"],
+                    "price":            _safe_float(row._mapping["price"]),
+                    "rating":           _safe_float(row._mapping["rating"]),
+                    "review_count":     _safe_int(row._mapping["review_count"]),
+                    "status":           row._mapping["status"],
+                    "similarity_score": _safe_float(row._mapping["score"]) or 0.0,
                 }
-                for row in results
+                for row in rows
             ]
-            
+
         except OperationalError as e:
-            logger.error(f"Database connection error: {e}")
+            logger.error("Database connection error: %s", e, exc_info=True)
             raise DatabaseError(f"Database connection failed: {str(e)}")
-            
+
         except SQLAlchemyError as e:
-            logger.error(f"Database query error: {e}")
+            logger.error("Database query error: %s", e, exc_info=True)
             raise VectorSearchError(f"Vector search query failed: {str(e)}")
-            
+
         except (ValueError, TypeError) as e:
-            logger.error(f"Data formatting error: {e}")
+            logger.error("Data formatting error: %s", e, exc_info=True)
             raise VectorSearchError(f"Invalid data format: {str(e)}")
-            
+
         except Exception as e:
-            logger.error(f"Unexpected error in vector search: {e}")
+            logger.error("Unexpected error in vector search: %s", e, exc_info=True)
             raise VectorSearchError(f"Vector search failed: {str(e)}")

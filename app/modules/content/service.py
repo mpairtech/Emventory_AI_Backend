@@ -163,10 +163,22 @@ Follow this EXACT 5-section structure:
 4. USE CASES (1 paragraph)
    - Describe real-world scenarios where this product fits naturally
    - Mention specific rooms, environments, occasions, or user types
-   - Example for decor: "Ideal for living rooms, bedrooms, offices, or as a thoughtful gift for housewarmings..."
-   - Example for electronics: "Perfect for students, remote workers, content creators, or everyday users..."
-   - Example for industrial: "Suitable for factory workers, construction sites, warehouse staff, or industrial technicians..."
-   - Make it feel natural and relatable to the target buyer
+   - ⚠️ STRICT: Only mention use cases directly supported by the listed specs.
+     Do NOT infer suitability for activities, environments, or user types
+     not evidenced by the product data.
+     Examples of forbidden inferences:
+       • Do NOT mention any durability, weather, or environment claim unless explicitly listed in specs
+       • Do NOT mention any feature, technology, or capability not word-for-word present in the product data
+       • Do NOT upgrade or embellish a listed spec (e.g. 'cVc mic' must NOT become 'noise cancellation' or 'ANC')
+       • Do NOT assume quality, grade, or suitability beyond what the data states
+
+⚠️ CRITICAL — FACTUAL ACCURACY RULE:
+Use ONLY the facts explicitly listed in the product data above.
+Do NOT infer, assume, or mention ANY feature not directly stated in the specifications.
+This applies to every product attribute without exception — features, materials, ratings,
+certifications, compatibility, dimensions, performance claims, or any other detail.
+If it is not written in the product data, it does not exist — do not write about it.
+Violating this rule makes the listing legally and commercially inaccurate.
 
 5. BUY CLOSING PARAGRAPH (1 paragraph)
    - Start with "Buy [product name]"
@@ -319,7 +331,7 @@ class ContentGenerationService:
                 top_p=0.9,
                 frequency_penalty=0.1,
                 presence_penalty=0.0,
-                max_tokens=max_tokens,
+                max_tokens=max_tokens, 
                 response_format={"type": "json_object"},
             )
 

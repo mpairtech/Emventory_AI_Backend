@@ -3,10 +3,10 @@ import requests
 
 CONTENT_API_URL = "http://127.0.0.1:8000/api/v1/content"
 SEARCH_API_URL  = "http://127.0.0.1:8000/api/v1/search"
+VOICE_API_URL   = "http://127.0.0.1:8000/api/v1/voice"
 API_KEY         = "d866db0946c3a50a33fc8b985777a9da86433a92bc56c9c09938b3753aba0a60"
 KEY_INPUT       = "org_123"
 
-# Keep old name as alias so existing call_api() calls still work
 API_BASE_URL = CONTENT_API_URL
 
 st.set_page_config(
@@ -289,6 +289,29 @@ hr { border-color: #e0ddd6 !important; margin: 2rem 0 !important; }
     gap: 0.6rem;
 }
 .source-meta span { white-space: nowrap; }
+
+/* ── Transcript pill ── */
+.transcript-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #f0ede8;
+    border: 1.5px solid #e0ddd6;
+    border-radius: 6px;
+    padding: 0.55rem 1rem;
+    margin-bottom: 1.2rem;
+    font-size: 0.88rem;
+    color: #444;
+    line-height: 1.5;
+}
+.transcript-pill .t-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #aaa;
+    flex-shrink: 0;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -297,11 +320,11 @@ st.markdown("""
 <div class="app-header">
     <span class="app-logo">⬡ Emventory</span>
     <span class="app-title">AI Tools</span>
-    <span class="app-desc">RAG Search · Content · Social</span>
+    <span class="app-desc">RAG Search · Content · Social · Voice</span>
 </div>
 """, unsafe_allow_html=True)
 
-# ── API helper ─────────────────────────────────────────────────────────────
+# ── API helpers ────────────────────────────────────────────────────────────
 def call_api(endpoint: str, payload: dict) -> tuple[dict | None, int, str]:
     try:
         resp = requests.post(
@@ -338,7 +361,7 @@ def call_search_api(endpoint: str, payload: dict, params: dict | None = None) ->
                 "X-Key-Input":  KEY_INPUT,
                 "Content-Type": "application/json",
             },
-            timeout=45,
+            timeout=60,
         )
         try:
             data = resp.json()
@@ -352,7 +375,43 @@ def call_search_api(endpoint: str, payload: dict, params: dict | None = None) ->
     except Exception as e:
         return None, 0, str(e)
 
-# ── Form ──────────────────────────────────────────────────────────────────
+
+def render_sources(sources: list) -> None:
+    """Shared helper to render RAG source cards."""
+    if not sources:
+        return
+    st.markdown(
+        f'<div class="result-label">Sources &nbsp;<span style="color:#ccc;font-size:0.6rem">({len(sources)})</span></div>',
+        unsafe_allow_html=True,
+    )
+    for src in sources:
+        score    = src.get("similarity_score", 0)
+        name_s   = src.get("name", "—")
+        brand_s  = src.get("brand") or ""
+        cat_s    = src.get("category") or ""
+        price_s  = src.get("price")
+        rating_s = src.get("rating")
+        status_s = src.get("status") or ""
+
+        meta_parts = []
+        if brand_s:   meta_parts.append(f"<span>{brand_s}</span>")
+        if cat_s:     meta_parts.append(f"<span>{cat_s}</span>")
+        if price_s is not None: meta_parts.append(f"<span>${price_s:,.0f}</span>")
+        if rating_s is not None: meta_parts.append(f"<span>★ {rating_s}</span>")
+        if status_s:  meta_parts.append(f"<span>{status_s}</span>")
+
+        st.markdown(f"""
+        <div class="source-card">
+            <span class="source-score">{score:.2f}</span>
+            <div class="source-body">
+                <div class="source-name">{name_s}</div>
+                <div class="source-meta">{"".join(meta_parts)}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+# ── Product form ──────────────────────────────────────────────────────────
 st.markdown('<div class="sec-label">Product</div>', unsafe_allow_html=True)
 
 col1, col2, col3 = st.columns([3, 1.5, 1.5])
@@ -383,6 +442,7 @@ with col9:
 
 lang_map = {"English": "english", "Bengali (বাংলা)": "Bengali", "Arabic": "ar"}
 
+
 def build_payload() -> dict | None:
     if not name.strip():
         st.error("Product name is required.")
@@ -404,27 +464,24 @@ def build_payload() -> dict | None:
         payload["query"] = query.strip()
     return payload
 
-# ── Tabs ──────────────────────────────────────────────────────────────────
+
+# ── Content tabs ──────────────────────────────────────────────────────────
 st.markdown("---")
 tab1, tab2, tab3 = st.tabs(["Description", "Social Post", "Both"])
 
-# ── Tab 1 ─────────────────────────────────────────────────────────────────
 with tab1:
     if st.button("Generate description", key="gen_desc"):
         payload = build_payload()
         if payload:
             with st.spinner("Generating…"):
                 data, code, err = call_api("generate", payload)
-
             if err:
                 st.error(err)
             elif code == 200:
                 desc    = data.get("description", {})
                 bullets = data.get("feature_bullets", [])
-
                 st.markdown('<div class="result-label">Description</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="result-block">{desc.get("content", "")}</div>', unsafe_allow_html=True)
-
                 st.markdown('<div class="result-label">Key Features</div>', unsafe_allow_html=True)
                 rows = "".join([
                     f'<div class="bullet-row"><span class="bullet-mark">—</span><span>{b}</span></div>'
@@ -434,41 +491,34 @@ with tab1:
             else:
                 st.error(f"Error {code}: {data.get('detail', data)}")
 
-# ── Tab 2 ─────────────────────────────────────────────────────────────────
 with tab2:
     if st.button("Generate post", key="gen_social"):
         payload = build_payload()
         if payload:
             with st.spinner("Generating…"):
                 data, code, err = call_api("social", payload)
-
             if err:
                 st.error(err)
             elif code == 200:
                 post     = data.get("post", {})
                 body     = post.get("post_body", "")
                 hashtags = post.get("hashtags", [])
-
                 st.markdown('<div class="result-label">Post</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="result-block">{body}</div>', unsafe_allow_html=True)
-
                 pills = "".join([f'<span class="tag">#{h}</span>' for h in hashtags])
                 st.markdown(f'<div class="tag-row">{pills}</div>', unsafe_allow_html=True)
             else:
                 st.error(f"Error {code}: {data.get('detail', data)}")
 
-# ── Tab 3 ─────────────────────────────────────────────────────────────────
 with tab3:
     if st.button("Generate both", key="gen_both"):
         payload = build_payload()
         if payload:
             col_l, col_r = st.columns(2)
-
             with col_l:
                 st.markdown("**Description**")
                 with st.spinner("Generating…"):
                     data_g, code_g, err_g = call_api("generate", payload)
-
                 if err_g:
                     st.error(err_g)
                 elif code_g == 200:
@@ -483,12 +533,10 @@ with tab3:
                     st.markdown(f'<div class="result-block">{rows}</div>', unsafe_allow_html=True)
                 else:
                     st.error(f"Error {code_g}: {data_g.get('detail', data_g)}")
-
             with col_r:
                 st.markdown("**Social Post**")
                 with st.spinner("Generating…"):
                     data_s, code_s, err_s = call_api("social", payload)
-
                 if err_s:
                     st.error(err_s)
                 elif code_s == 200:
@@ -508,65 +556,117 @@ with tab3:
 st.markdown("---")
 st.markdown('<div class="sec-label">RAG Search</div>', unsafe_allow_html=True)
 
-rag_query = st.text_input("Query", key="rag_query", label_visibility="collapsed",
-                           placeholder="Ask anything — e.g. suggest me a budget laptop within 800 dollar")
+rag_query = st.text_input(
+    "Query", key="rag_query", label_visibility="collapsed",
+    placeholder="Ask anything — e.g. suggest me a budget laptop within 800 dollar",
+)
 
 if st.button("Search", key="rag_search"):
     if not rag_query.strip():
         st.error("Please enter a query.")
     else:
-        payload = {
-            "query":  rag_query.strip(),
-            "org_id": KEY_INPUT,
-            "top_k":  5,
-        }
-
+        payload = {"query": rag_query.strip(), "org_id": KEY_INPUT, "top_k": 5}
         with st.spinner("Searching…"):
             data, code, err = call_search_api("rag", payload)
-
         if err:
             st.error(err)
         elif code == 200:
             answer  = data.get("answer", "")
             sources = data.get("sources", [])
+            st.markdown('<div class="result-label">Answer</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="rag-answer">{answer}</div>', unsafe_allow_html=True)
+            render_sources(sources)
+        else:
+            st.error(f"Error {code}: {data.get('detail', data)}")
 
+
+# ══════════════════════════════════════════════════════════════════════════
+# VOICE SEARCH
+# ══════════════════════════════════════════════════════════════════════════
+
+st.markdown("---")
+st.markdown('<div class="sec-label">Voice Search</div>', unsafe_allow_html=True)
+
+voice_col1, voice_col2 = st.columns([3, 1])
+with voice_col1:
+    voice_url = st.text_input(
+        "Audio URL",
+        key="voice_url",
+        label_visibility="collapsed",
+        placeholder="Paste Cloudflare R2 audio URL — e.g. https://pub-xxx.r2.dev/query.mp3",
+    )
+with voice_col2:
+    voice_lang = st.selectbox(
+        "Lang",
+        options=["en", "bn", "ar", "hi", "zh", "fr", "de", "es"],
+        key="voice_lang",
+    )
+
+if st.button("Transcribe & Search", key="voice_search"):
+    if not voice_url.strip():
+        st.error("Please paste an R2 audio URL.")
+    else:
+        payload = {
+            "file_url": voice_url.strip(),
+            "org_id":   KEY_INPUT,
+            "language": voice_lang,
+            "top_k":    5,
+        }
+        with st.spinner("Transcribing audio and searching…"):
+            try:
+                resp = requests.post(
+                    VOICE_API_URL,
+                    json=payload,
+                    headers={
+                        "X-API-Key":    API_KEY,
+                        "X-Key-Input":  KEY_INPUT,
+                        "Content-Type": "application/json",
+                    },
+                    timeout=60,
+                )
+                try:
+                    data = resp.json()
+                except Exception:
+                    data = {"raw": resp.text}
+                code, err = resp.status_code, ""
+            except requests.exceptions.ConnectionError:
+                data, code, err = None, 0, "Can't reach the server — is it running?"
+            except requests.exceptions.Timeout:
+                data, code, err = None, 0, "Request timed out. Try again."
+            except Exception as e:
+                data, code, err = None, 0, str(e)
+
+        if err:
+            st.error(err)
+        elif code == 200:
+            transcript = data.get("transcript", "")
+            answer     = data.get("answer", "")
+            sources    = data.get("sources", [])
+
+            # ── Transcript pill ──
+            if transcript:
+                st.markdown(
+                    f'<div class="transcript-pill">'
+                    f'<span class="t-label">You said</span>'
+                    f'{transcript}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # ── Answer ──
             st.markdown('<div class="result-label">Answer</div>', unsafe_allow_html=True)
             st.markdown(f'<div class="rag-answer">{answer}</div>', unsafe_allow_html=True)
 
-            if sources:
-                st.markdown(
-                    f'<div class="result-label">Sources &nbsp;<span style="color:#ccc;font-size:0.6rem">({len(sources)})</span></div>',
-                    unsafe_allow_html=True,
-                )
-                for src in sources:
-                    score    = src.get("similarity_score", 0)
-                    name_s   = src.get("name", "—")
-                    brand_s  = src.get("brand") or ""
-                    cat_s    = src.get("category") or ""
-                    price_s  = src.get("price")
-                    rating_s = src.get("rating")
-                    status_s = src.get("status") or ""
+            # ── Sources ──
+            render_sources(sources)
 
-                    meta_parts = []
-                    if brand_s:
-                        meta_parts.append(f"<span>{brand_s}</span>")
-                    if cat_s:
-                        meta_parts.append(f"<span>{cat_s}</span>")
-                    if price_s is not None:
-                        meta_parts.append(f"<span>${price_s:,.0f}</span>")
-                    if rating_s is not None:
-                        meta_parts.append(f"<span>★ {rating_s}</span>")
-                    if status_s:
-                        meta_parts.append(f"<span>{status_s}</span>")
-
-                    st.markdown(f"""
-                    <div class="source-card">
-                        <span class="source-score">{score:.2f}</span>
-                        <div class="source-body">
-                            <div class="source-name">{name_s}</div>
-                            <div class="source-meta">{"".join(meta_parts)}</div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+        elif code == 400:
+            st.error(f"Bad request: {data.get('detail', 'Invalid audio or empty transcript.')}")
+        elif code == 413:
+            st.error("Audio file too large (25 MB limit).")
+        elif code == 429:
+            st.warning("Rate limit hit — wait a moment and try again.")
+        elif code == 503:
+            st.error("AI service unavailable. Try again shortly.")
         else:
             st.error(f"Error {code}: {data.get('detail', data)}")
