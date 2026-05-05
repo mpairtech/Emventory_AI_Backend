@@ -2,6 +2,8 @@ from fastapi import APIRouter, Header, HTTPException, Depends, Query, status
 from typing import Optional
 from app.api.v1.routers.search import router as search_router
 from app.api.v1.routers.content import router as content_router
+
+
 from app.core.cache.cache_service import cache_service
 from app.api.v1.schemas import R2VoiceSearchRequest
 from app.modules.search.stt import transcribe_from_r2
@@ -52,6 +54,8 @@ router.include_router(
     content_router,                          
     dependencies=[Depends(verify_api_key)]   
 )
+           
+    
 
 
 # -----------------------------------------------

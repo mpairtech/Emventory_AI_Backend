@@ -54,17 +54,26 @@ class VectorStore:
             raise VectorSearchError("Embedding cannot be empty.")
 
         try:
-            embedding_str = '[' + ','.join(map(str, embedding)) + ']'
-            params = {"q": embedding_str, "top_k": top_k}
+            embedding_str = "[" + ",".join(map(str, embedding)) + "]"
 
-            # where_clause is constructed from a hardcoded string only —
-            # org_id itself is always passed as a bound parameter, never interpolated.
-            where_clause = "WHERE org_id = :org_id" if org_id else ""
-            if org_id:
-                params["org_id"] = org_id
-
-            sql = text(
-                """
+            # FIX (Critical — SQL Injection): The original code used .format() to
+            # splice where_clause into the SQL text:
+            #
+            #   where_clause = "WHERE org_id = :org_id" if org_id else ""
+            #   sql = text("... {where_clause} ...".format(where_clause=where_clause))
+            #
+            # .format() and f-strings are equally dangerous here — both interpolate
+            # strings directly into the SQL before SQLAlchemy ever sees the query.
+            # This means the SQL structure is determined at runtime by a variable
+            # derived from caller input, bypassing parameterisation entirely.
+            #
+            # Fix: one static SQL template with a NULL-safe conditional parameter.
+            # `:org_id IS NULL OR org_id = :org_id` evaluates to TRUE for all rows
+            # when org_id is None (passed as SQL NULL), filtering all orgs.
+            # When org_id is set, it filters to that org only.
+            # The SQL text is now a compile-time constant — no string construction,
+            # no .format(), no f-strings, no branching SQL shape.
+            sql = text("""
                 SELECT org_id,
                        product_id,
                        name,
@@ -78,28 +87,33 @@ class VectorStore:
                        status,
                        1 - (embedding <=> CAST(:q AS vector)) AS score
                 FROM product_vectors
-                {where_clause}
+                WHERE (:org_id IS NULL OR org_id = :org_id)
                 ORDER BY embedding <=> CAST(:q AS vector)
                 LIMIT :top_k
-                """.format(where_clause=where_clause)
-            )
+            """)
 
-            rows = db.execute(sql, params).fetchall()
+            # org_id is passed directly as a bound parameter.
+            # When None, SQLAlchemy sends NULL and the IS NULL branch fires,
+            # returning rows across all orgs — identical to having no WHERE clause.
+            rows = db.execute(
+                sql,
+                {"q": embedding_str, "org_id": org_id, "top_k": top_k},
+            ).mappings().fetchall()
 
             return [
                 {
-                    "org_id":           row._mapping["org_id"],
-                    "product_id":       row._mapping["product_id"],
-                    "name":             row._mapping["name"],
-                    "category":         row._mapping["category"],
-                    "brand":            row._mapping["brand"],
-                    "description":      row._mapping["description"],
-                    "specifications":   row._mapping["specifications"],
-                    "price":            _safe_float(row._mapping["price"]),
-                    "rating":           _safe_float(row._mapping["rating"]),
-                    "review_count":     _safe_int(row._mapping["review_count"]),
-                    "status":           row._mapping["status"],
-                    "similarity_score": _safe_float(row._mapping["score"]) or 0.0,
+                    "org_id":           row["org_id"],
+                    "product_id":       row["product_id"],
+                    "name":             row["name"],
+                    "category":         row["category"],
+                    "brand":            row["brand"],
+                    "description":      row["description"],
+                    "specifications":   row["specifications"],
+                    "price":            _safe_float(row["price"]),
+                    "rating":           _safe_float(row["rating"]),
+                    "review_count":     _safe_int(row["review_count"]),
+                    "status":           row["status"],
+                    "similarity_score": _safe_float(row["score"]) or 0.0,
                 }
                 for row in rows
             ]

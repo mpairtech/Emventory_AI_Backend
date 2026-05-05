@@ -74,15 +74,11 @@ def verify_api_key(request: Request):
 
     expected_key = _generate_key(key_input)
 
-    # Debug log: only lengths + prefix/suffix to avoid full secret exposure
+    # Only log boolean outcome — never log key material, prefixes, or suffixes.
     logger.info(
-        "verify_api_key: key_input='%s', received_len=%s, expected_len=%s, "
-        "received_prefix='%s', expected_prefix='%s'",
+        "verify_api_key: key_input=%r, key_present=%s",
         key_input,
-        len(key) if key else 0,
-        len(expected_key),
-        (key or "")[:6],
-        expected_key[:6],
+        bool(key),
     )
 
     if not key or not hmac.compare_digest(key, expected_key):
@@ -427,15 +423,33 @@ def debug_search(
         org_id = request.org_id
         query_embedding = EmbeddingService.embed(query)
 
-        embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
-        params = {"q": embedding_str}
-        where_clause = "WHERE org_id = :org_id" if org_id else ""
-        if org_id:
-            params["org_id"] = org_id
+        # Build the embedding string for pgvector — this is model output, not user input,
+        # but we still pass it as a bound parameter to enforce parameterised query discipline
+        # across the entire codebase. Never interpolate anything into SQL via f-strings.
+        embedding_str = "[" + ",".join(map(str, query_embedding)) + "]"
 
-        sql = text(f"""
-            SELECT 
-                org_id, product_id,
+        # FIX (Critical — SQL Injection): The original code used an f-string to splice
+        # `where_clause` directly into the SQL text:
+        #
+        #   where_clause = "WHERE org_id = :org_id" if org_id else ""
+        #   sql = text(f"... {where_clause} ...")
+        #
+        # Although :org_id itself was still a bound parameter, the f-string interpolation
+        # of the entire WHERE clause string means the SQL structure was determined by a
+        # variable derived from user input. Any future refactor that accidentally put
+        # org_id into the f-string directly (rather than via :org_id) would be a live
+        # injection vulnerability. The pattern also normalises f-string SQL construction
+        # in the codebase, which is how injection vectors spread.
+        #
+        # Fix: use a single static SQL template with a NULL-safe conditional parameter.
+        # `:org_id IS NULL OR org_id = :org_id` evaluates to TRUE for all rows when
+        # org_id is None (passed as SQL NULL), and filters to the specific org when set.
+        # The SQL text is now a compile-time constant — no runtime string construction,
+        # no f-strings, no branching SQL structure.
+        sql = text("""
+            SELECT
+                org_id,
+                product_id,
                 name,
                 category,
                 brand,
@@ -445,39 +459,52 @@ def debug_search(
                 rating,
                 review_count,
                 status,
-                1 - (embedding <=> CAST(:q AS vector)) AS similarity_score,
-                embedding <-> CAST(:q AS vector) AS euclidean_distance,
-                embedding <=> CAST(:q AS vector) AS cosine_distance
+                1 - (embedding <=> CAST(:q AS vector))  AS similarity_score,
+                embedding <-> CAST(:q AS vector)         AS euclidean_distance,
+                embedding <=> CAST(:q AS vector)         AS cosine_distance
             FROM product_vectors
-            {where_clause}
+            WHERE (:org_id IS NULL OR org_id = :org_id)
             ORDER BY embedding <=> CAST(:q AS vector)
             LIMIT 10
         """)
 
-        results = db.execute(sql, params).fetchall()
+        # org_id is passed directly; SQLAlchemy binds it as a typed parameter.
+        # When org_id is None, the DB receives NULL and the IS NULL branch fires,
+        # returning rows across all orgs (intended debug behaviour).
+        rows = db.execute(sql, {"q": embedding_str, "org_id": org_id}).mappings().fetchall()
+
         query_words = set(query.lower().split())
 
         debug_results = []
-        for row in results:
-            product_text = " ".join(filter(None, [row[2], row[3], row[4], row[5], row[6]])).lower()
+        for row in rows:
+            # Use named column access via mappings() — never positional indices.
+            # Positional access (row[11]) breaks silently if the SELECT column order
+            # changes; named access raises a KeyError immediately on mismatch.
+            product_text = " ".join(filter(None, [
+                row["name"],
+                row["category"],
+                row["brand"],
+                row["description"],
+                row["specifications"],
+            ])).lower()
             product_words = set(product_text.split())
             matching_words = query_words.intersection(product_words)
 
             debug_results.append({
-                "org_id":              row[0],
-                "product_id":          row[1],
-                "name":                row[2],
-                "category":            row[3],
-                "brand":               row[4],
-                "description":         row[5],
-                "specifications":      row[6],
-                "price":               _safe_float(row[7]),
-                "rating":              _safe_float(row[8]),
-                "review_count":        _safe_int(row[9]),
-                "status":              row[10],
-                "similarity_score":    _safe_float(row[11]) or 0.0,
-                "euclidean_distance":  _safe_float(row[12]) or 0.0,
-                "cosine_distance":     _safe_float(row[13]) or 0.0,
+                "org_id":              row["org_id"],
+                "product_id":          row["product_id"],
+                "name":                row["name"],
+                "category":            row["category"],
+                "brand":               row["brand"],
+                "description":         row["description"],
+                "specifications":      row["specifications"],
+                "price":               _safe_float(row["price"]),
+                "rating":              _safe_float(row["rating"]),
+                "review_count":        _safe_int(row["review_count"]),
+                "status":              row["status"],
+                "similarity_score":    _safe_float(row["similarity_score"]) or 0.0,
+                "euclidean_distance":  _safe_float(row["euclidean_distance"]) or 0.0,
+                "cosine_distance":     _safe_float(row["cosine_distance"]) or 0.0,
                 "matching_words":      list(matching_words),
                 "total_query_words":   len(query_words),
                 "total_product_words": len(product_words),

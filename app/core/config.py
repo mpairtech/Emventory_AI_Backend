@@ -132,6 +132,18 @@ class Settings(BaseSettings):
     R2_SECRET_ACCESS_KEY: str | None = None
     R2_BUCKET_NAME: str | None = None
 
+    REMOVE_BG_API_KEY: str = ""
+    REPLICATE_API_TOKEN: str = ""
+    CLIPDROP_API_KEY: str = ""
+    
+     # Image Enhancement Settings
+    ENHANCEMENT_MODEL_PATH: str = "models/saved/best_model.pt"
+    ENHANCEMENT_MAX_IMAGE_MB: int = 10
+    ENHANCEMENT_MAX_DIMENSION: int = 4096
+    ENHANCEMENT_OUTPUT_DIR: Path = Path("outputs/enhanced")
+    ENHANCEMENT_BATCH_MAX_FILES: int = 20
+    ENHANCEMENT_QUALITY: int = 95
+
    
 
 

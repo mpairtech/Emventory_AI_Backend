@@ -1,5 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import Optional,Literal
+from typing import Optional, Literal
+from datetime import datetime
 
 # Max text length for embedding to avoid token limit 
 EMBEDDING_TEXT_MAX_LENGTH = 8192
@@ -137,7 +138,7 @@ class ProductData(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     category: Optional[str] = Field(None, max_length=255)
     brand: Optional[str] = Field(None, max_length=255)
-    specifications: list[str] = Field(default_factory=list)  
+    specifications: list[str] = Field(default_factory=list)
     price: Optional[float] = Field(None, gt=0)
 
     @field_validator("name", mode="after")
@@ -147,7 +148,7 @@ class ProductData(BaseModel):
             raise ValueError("Product name cannot be empty")
         return v.strip()
 
-    @field_validator("specifications", mode="after") 
+    @field_validator("specifications", mode="after")
     @classmethod
     def clean_specifications(cls, v: list[str]) -> list[str]:
         return [s.strip() for s in v if s and s.strip()]
@@ -197,14 +198,18 @@ class ContentGenerationResponse(BaseModel):
     region: str
     tone: str
     description: GeneratedContent
-    feature_bullets: list[str]          
+    feature_bullets: list[str]
     provider: str = "openai"
+
+
 class SocialPostRequest(BaseModel):
     product_data: ProductData
     region: str = "BD"
     language: str = "english"
     tone: Literal["formal", "casual", "persuasive"] = "casual"
     query: Optional[str] = None
+    price: Optional[str] = None
+    shop_address: Optional[str] = None
 
 
 class SocialPostContent(BaseModel):
@@ -220,3 +225,53 @@ class SocialPostResponse(BaseModel):
     tone: str
     post: SocialPostContent
     provider: str
+
+
+# ---------------------------------------------------------------------------
+# Image Enhancement
+# ---------------------------------------------------------------------------
+
+class ImageEnhanceOptions(BaseModel):
+    """
+    Controls which pipeline steps run. All enabled by default.
+    Sent as individual Form fields in multipart/form-data.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    bg_removal: bool = Field(True, description="Remove background via remove.bg")
+    upscale: bool = Field(True, description="2× upscale via Replicate real-esrgan")
+    sharpen: bool = Field(True, description="Sharpen/denoise via Clipdrop")
+    lighting: bool = Field(True, description="Auto brightness+contrast via Pillow (free, local)")
+    upscale_factor: Literal[2, 4] = Field(2, description="Upscale multiplier — 2 or 4")
+    output_format: Literal["webp", "jpeg"] = Field("webp", description="Output image format")
+    output_quality: int = Field(85, ge=60, le=100, description="Compression quality (60–100)")
+    product_id: Optional[str] = Field(None, description="Optional: link job to a product record")
+
+
+class ImageEnhanceJobCreated(BaseModel):
+    """Returned immediately on POST /images/enhance — 202 Accepted."""
+    job_id: str
+    status: Literal["queued"] = "queued"
+    message: str = "Job queued. Poll GET /api/v1/images/enhance/{job_id} for updates."
+
+
+class ImageEnhanceSteps(BaseModel):
+    """Per-step status. Each value: queued | processing | done | skipped | failed."""
+    bg_removal: str = "queued"
+    upscale: str = "queued"
+    sharpen: str = "queued"
+    lighting: str = "queued"
+    export: str = "queued"
+
+
+class ImageEnhanceJobStatus(BaseModel):
+    """Returned on GET /images/enhance/{job_id}."""
+    job_id: str
+    status: str  # queued | processing | done | partial | failed
+    steps: ImageEnhanceSteps
+    original_url: Optional[str] = None
+    enhanced_url: Optional[str] = None
+    cost_usd: float = 0.0
+    error: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
