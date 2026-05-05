@@ -26,5 +26,6 @@ rich==14.2.0
 
 #file upload 
 python-multipart
+cloudinary
 redis==5.0.1
 hiredis==2.3.2
