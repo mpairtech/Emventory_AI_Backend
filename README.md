@@ -40,7 +40,7 @@ pip install -r requirements-full.txt
 docker compose up --build
 ```
 
-API should be available at `http://localhost:8000` (Swagger: `/docs`).
+API should be available at `http://localhost:5000` (Swagger: `/docs`).
 
 ## One-off DB init (optional)
 

@@ -1,9 +1,9 @@
 import streamlit as st
 import requests
 
-CONTENT_API_URL = "http://127.0.0.1:8000/api/v1/content"
-SEARCH_API_URL  = "http://127.0.0.1:8000/api/v1/search"
-VOICE_API_URL   = "http://127.0.0.1:8000/api/v1/voice"
+CONTENT_API_URL = "http://127.0.0.1:5000/api/v1/content"
+SEARCH_API_URL  = "http://127.0.0.1:5000/api/v1/search"
+VOICE_API_URL   = "http://127.0.0.1:5000/api/v1/voice"
 API_KEY         = "d866db0946c3a50a33fc8b985777a9da86433a92bc56c9c09938b3753aba0a60"
 KEY_INPUT       = "org_123"
 

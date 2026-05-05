@@ -50,7 +50,7 @@ LOG_LEVEL=INFO
 docker compose up -d
 ```
 
-অ্যাপ: **http://localhost:8000**
+অ্যাপ: **http://localhost:5000**
 
 প্রথমবার টেবিল বানাতে (একবার):
 
@@ -70,7 +70,7 @@ docker compose exec app python scripts/migrate_add_org_id.py
 
 ```bash
 docker build -t emventory-ai-backend .
-docker run -p 8000:8000 --env-file .env emventory-ai-backend
+docker run -p 5000:5000 --env-file .env emventory-ai-backend
 ```
 
 Init DB / মাইগ্রেশন:

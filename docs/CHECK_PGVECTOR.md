@@ -12,9 +12,9 @@
 **উদাহরণ:**
 
 ```http
-GET http://127.0.0.1:8000/api/v1/search/indexed
-GET http://127.0.0.1:8000/api/v1/search/indexed?org_id=38e7d815-fd80-4a86-b124-835b17eb6227
-GET http://127.0.0.1:8000/api/v1/search/indexed?org_id=38e7d815-fd80-4a86-b124-835b17eb6227&limit=20
+GET http://127.0.0.1:5000/api/v1/search/indexed
+GET http://127.0.0.1:5000/api/v1/search/indexed?org_id=38e7d815-fd80-4a86-b124-835b17eb6227
+GET http://127.0.0.1:5000/api/v1/search/indexed?org_id=38e7d815-fd80-4a86-b124-835b17eb6227&limit=20
 ```
 
 **Response:**

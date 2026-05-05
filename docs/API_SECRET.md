@@ -207,7 +207,7 @@ console.log("Org key:", orgKey);
 const crypto = require("crypto");
 
 const API_SECRET = process.env.API_SECRET || "your-api-secret";
-const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:8000";
+const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:5000";
 
 function getMasterKey() {
   return crypto
@@ -266,7 +266,7 @@ export class SearchKeyService {
    */
   async generateKeyForOrg(orgId: string): Promise<string> {
     const masterKey = this.generateMasterKey();
-    const fastApiUrl = process.env.FASTAPI_URL || "http://localhost:8000";
+    const fastApiUrl = process.env.FASTAPI_URL || "http://localhost:5000";
 
     const response = await fetch(`${fastApiUrl}/api/v1/search/generate-key`, {
       method: "POST",
@@ -323,7 +323,7 @@ export class SearchKeyController {
 **cURL – generate key for org (after you have master key):**
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/search/generate-key" \
+curl -X POST "http://localhost:5000/api/v1/search/generate-key" \
   -H "Content-Type: application/json" \
   -H "X-Key-Input: generate" \
   -H "X-API-Key: YOUR_MASTER_KEY" \
@@ -335,7 +335,7 @@ curl -X POST "http://localhost:8000/api/v1/search/generate-key" \
 ```powershell
 $masterKey = "YOUR_MASTER_KEY"
 $body = '{"input":"org_abc123"}'
-Invoke-RestMethod -Uri "http://localhost:8000/api/v1/search/generate-key" `
+Invoke-RestMethod -Uri "http://localhost:5000/api/v1/search/generate-key" `
   -Method POST -ContentType "application/json" `
   -Headers @{"X-Key-Input"="generate"; "X-API-Key"=$masterKey} `
   -Body $body
@@ -348,7 +348,7 @@ Invoke-RestMethod -Uri "http://localhost:8000/api/v1/search/generate-key" `
 After you have a `token` for `org_abc123` from `/generate-key`:
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/search/semantic" \
+curl -X POST "http://localhost:5000/api/v1/search/semantic" \
   -H "Content-Type: application/json" \
   -H "X-Key-Input: org_abc123" \
   -H "X-API-Key: API_KEY_FOR_ORG_ABC123" \
@@ -459,7 +459,7 @@ const orgKey = generateKey(orgId);
 const crypto = require("crypto");
 
 const API_SECRET = process.env.API_SECRET;
-const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:8000";
+const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:5000";
 
 function getMasterKey() {
   return crypto
@@ -534,7 +534,7 @@ Write-Host $masterKey
 
 1. **New Request** খুলুন।
 2. **Method:** `POST`
-3. **URL:** `http://localhost:8000/api/v1/search/generate-key` (বা আপনার FastAPI base URL)
+3. **URL:** `http://localhost:5000/api/v1/search/generate-key` (বা আপনার FastAPI base URL)
 4. **Headers** ট্যাবে যান এবং যোগ করুন:
 
    | Key          | Value                                   |
@@ -578,7 +578,7 @@ Write-Host $masterKey
 
 1. আরেকটা **New Request** খুলুন।
 2. **Method:** `POST`
-3. **URL:** `http://localhost:8000/api/v1/search/semantic`
+3. **URL:** `http://localhost:5000/api/v1/search/semantic`
 4. **Headers:**
 
    | Key          | Value                                                      |
@@ -606,7 +606,7 @@ Write-Host $masterKey
 const crypto = require("crypto");
 
 const API_SECRET = process.env.API_SECRET;
-const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:8000";
+const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:5000";
 
 function getMasterKey() {
  return crypto.createHmac("sha256", API_SECRET).update("generate").digest("hex");

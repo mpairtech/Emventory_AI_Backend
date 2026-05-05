@@ -166,7 +166,7 @@ RAG কাজ করার জন্য আগে কিছু product index ক
 
 ```bash
 # RAG search
-curl -X POST http://127.0.0.1:8000/api/v1/search/rag \
+curl -X POST http://127.0.0.1:5000/api/v1/search/rag \
   -H "Content-Type: application/json" \
   -d '{"query": "cheap laptop"}'
 ```
@@ -178,7 +178,7 @@ import requests
 
 # RAG
 response = requests.post(
-    "http://127.0.0.1:8000/api/v1/search/rag",
+    "http://127.0.0.1:5000/api/v1/search/rag",
     json={"query": "cheap laptop"}
 )
 print(response.json())
