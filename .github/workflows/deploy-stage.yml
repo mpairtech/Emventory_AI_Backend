@@ -1,0 +1,64 @@
+name: Deploy STAGE (auto on stage branch)
+
+on:
+  push:
+    branches: ["stage"]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Optional: image tag to deploy (e.g. sha-abc123). Empty = deploy ghcr branch tag 'stage'."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: deploy-stage
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prepare image reference
+        id: img
+        run: |
+          REPO="ghcr.io/${{ github.repository }}/emventory-ai-backend"
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            echo "image=${REPO}:${{ inputs.image_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "image=${REPO}:stage" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Write SSH key
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.STAGE_DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.STAGE_DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy over SSH (stage)
+        env:
+          DEPLOY_HOST: ${{ secrets.STAGE_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.STAGE_DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.STAGE_DEPLOY_PATH }}
+          GHCR_USER: ${{ secrets.GHCR_USER }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          IMAGE: ${{ steps.img.outputs.image }}
+        run: |
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" bash -se <<'EOF'
+          set -euo pipefail
+          cd "${DEPLOY_PATH}"
+
+          test -f docker-compose.prod.yml
+          test -f .env.production
+
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+          IMAGE="${IMAGE}" ENV_FILE=".env.production" docker compose -f docker-compose.prod.yml pull
+          IMAGE="${IMAGE}" ENV_FILE=".env.production" docker compose -f docker-compose.prod.yml up -d --remove-orphans
+          docker image prune -f
+          EOF
+
