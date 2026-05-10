@@ -30,7 +30,7 @@ services:
     image: ${IMAGE:-emventory-ai-backend:latest}
     restart: unless-stopped
     env_file:
-      - ${ENV_FILE:-.env.production}
+      - ${ENV_FILE:-.env}
     environment:
       DB_HOST: postgres
       DB_PORT: "5432"

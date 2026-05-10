@@ -1,6 +1,7 @@
 # Emventory AI Backend (FastAPI + pgvector)
 
 This repo hosts the AI search backend:
+
 - FastAPI API (`/api/v1`)
 - Postgres + `pgvector` for semantic search
 - Gemini/OpenAI for embeddings + RAG generation
@@ -18,11 +19,11 @@ This repo hosts the AI search backend:
 
 ## Local run
 
-1) Create `.env` (copy from `.env.example`)
+1. Create `.env` (copy from `.env.example`)
 
 Optional: you can set `APP_ENV=local` (or `prod`) to load YAML defaults from `config/`.
 
-2) Install dependencies:
+2. Install dependencies:
 
 ```bash
 pip install -r requirements.txt
@@ -34,7 +35,7 @@ For full (includes heavy ML libs):
 pip install -r requirements-full.txt
 ```
 
-2) Start services:
+2. Start services:
 
 ```bash
 docker compose up --build
@@ -59,7 +60,7 @@ Set these secrets in your GitHub repo settings:
 - **`DEPLOY_HOST`**: server IP / hostname
 - **`DEPLOY_USER`**: SSH user (e.g. `ubuntu`)
 - **`DEPLOY_SSH_KEY`**: private key for that user (ed25519 recommended)
-- **`DEPLOY_PATH`**: path on server containing `docker-compose.prod.yml` and `.env.production`
+- **`DEPLOY_PATH`**: path on server containing `docker-compose.prod.yml` and `.env`
 - **`GHCR_USER`**: GHCR username (often your GitHub username)
 - **`GHCR_TOKEN`**: a GitHub PAT with `read:packages` (and `repo` if needed for private repos)
 
@@ -75,12 +76,12 @@ For **staging auto-deploy** (stage branch), set these secrets too:
 On your KVM host, keep a deployment folder (example: `/opt/emventory-ai-backend`) with:
 
 - `docker-compose.prod.yml` (from this repo)
-- `.env.production` (your production env file; start from `.env.example`)
+- `.env` (your production env file; start from `.env.example`)
 
 Then run:
 
 ```bash
-ENV_FILE=.env.production docker compose -f docker-compose.prod.yml up -d
+ENV_FILE=.env docker compose -f docker-compose.prod.yml up -d
 ```
 
 ## One-off DB init (optional)
@@ -90,4 +91,3 @@ The app auto-initializes the DB on startup, but you can also run:
 ```bash
 python -m scripts.init_db
 ```
-

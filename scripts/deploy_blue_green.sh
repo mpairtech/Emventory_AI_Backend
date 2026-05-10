@@ -2,7 +2,7 @@
 set -euo pipefail
 
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
-ENV_FILE="${ENV_FILE:-.env.production}"
+ENV_FILE="${ENV_FILE:-.env}"
 IMAGE="${IMAGE:-}"
 ACTIVE_FILE="${ACTIVE_FILE:-.active_color}"
 
