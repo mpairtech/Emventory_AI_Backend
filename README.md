@@ -46,16 +46,11 @@ API should be available at `http://localhost:5000` (Swagger: `/docs`).
 
 This repo includes:
 
-- **CI**: `.github/workflows/ci.yml`
-  - Installs `requirements-prod.txt`
-  - Runs an import/compile smoke check
-  - Builds the Docker image (no push)
-- **Publish image (GHCR)**: `.github/workflows/docker-publish.yml`
-  - Builds and pushes `ghcr.io/<org>/<repo>/emventory-ai-backend:<tag>`
-- **Deploy to server (SSH)**: `.github/workflows/deploy.yml`
-  - Pulls the chosen image tag on your KVM host and runs `docker compose -f docker-compose.prod.yml up -d`
-- **Auto-deploy staging**: `.github/workflows/deploy-stage.yml`
-  - On every push to `stage` branch, deploys the `:stage` image tag to your staging server
+- **Single workflow**: `.github/workflows/ci-cd.yml`
+  - CI runs on PRs and on pushes to `main/master/stage`
+  - Builds & pushes image to GHCR on push
+  - Auto-deploys staging on push to `stage`
+  - Production deploy is manual via workflow dispatch
 
 ### Required GitHub Secrets (for deploy)
 
