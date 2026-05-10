@@ -30,3 +30,5 @@ python-multipart
 cloudinary
 redis==5.0.1
 hiredis==2.3.2
+wheel>=0.46.2
+setuptools>=80.0.0
