@@ -193,12 +193,12 @@ jobs:
           cd "${DEPLOY_PATH}"
 
           test -f docker-compose.prod.yml
-          test -f .env.production
+          test -f .env
           test -x scripts/deploy_blue_green.sh
 
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
-          IMAGE="${IMAGE}" ENV_FILE=".env.production" COMPOSE_FILE="docker-compose.prod.yml" ./scripts/deploy_blue_green.sh
+          IMAGE="${IMAGE}" ENV_FILE=".env" COMPOSE_FILE="docker-compose.prod.yml" ./scripts/deploy_blue_green.sh
           EOF
 
   deploy-production:
@@ -242,10 +242,10 @@ jobs:
           cd "${DEPLOY_PATH}"
 
           test -f docker-compose.prod.yml
-          test -f .env.production
+          test -f .env
           test -x scripts/deploy_blue_green.sh
 
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
-          IMAGE="${IMAGE}" ENV_FILE=".env.production" COMPOSE_FILE="docker-compose.prod.yml" ./scripts/deploy_blue_green.sh
+          IMAGE="${IMAGE}" ENV_FILE=".env" COMPOSE_FILE="docker-compose.prod.yml" ./scripts/deploy_blue_green.sh
           EOF
