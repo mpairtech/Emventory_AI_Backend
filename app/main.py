@@ -61,16 +61,16 @@ async def startup_event():
         logger.error(f"Database initialization failed: {e}", exc_info=True)
 
     # Redis Initialization 
-    try:
-        if settings.REDIS_ENABLED:
-            if redis_client.is_available:
-                logger.info("Redis cache initialized successfully.")
-            else:
-                logger.warning("Redis unavailable — running without cache.")
-        else:
-            logger.info("Redis disabled by configuration.")
-    except Exception as e:
-        logger.warning(f"Redis initialization error: {e}")
+    #try:
+        #if settings.REDIS_ENABLED:
+            #if redis_client.is_available:
+                #logger.info("Redis cache initialized successfully.")
+           # else:
+               # logger.warning("Redis unavailable — running without cache.")
+       # else:
+            #logger.info("Redis disabled by configuration.")
+   # except Exception as e:
+        #logger.warning(f"Redis initialization error: {e}")
 
     # -------- Route Debug Logging --------
     routes = [
