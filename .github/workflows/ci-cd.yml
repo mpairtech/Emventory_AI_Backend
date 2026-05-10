@@ -206,16 +206,16 @@ jobs:
 
       - name: Write SSH key
         run: |
-          install -m 700 -d ~/.ssh
-          echo "${{ secrets.STAGE_DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          mkdir -m 700 -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${{ secrets.STAGE_DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Deploy over SSH (staging)
         env:
-          DEPLOY_HOST: ${{ secrets.STAGE_DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.STAGE_DEPLOY_USER }}
-          DEPLOY_PATH: ${{ secrets.STAGE_DEPLOY_PATH }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           GHCR_USER: ${{ secrets.GHCR_USER }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           IMAGE: ${{ steps.img.outputs.image }}
@@ -259,7 +259,7 @@ jobs:
 
       - name: Write SSH key
         run: |
-          install -m 700 -d ~/.ssh
+          mkdir -m 700 -p ~/.ssh
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
