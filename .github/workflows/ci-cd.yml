@@ -161,7 +161,7 @@ jobs:
       contents: read
     steps:
       - name: Scan image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.34.0
         with:
           image-ref: ${{ needs.docker-publish.outputs.sha_image }}
           format: table
