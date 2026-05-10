@@ -204,6 +204,11 @@ jobs:
           REPO="${{ env.REGISTRY }}/${{ steps.lower.outputs.repo }}/${{ env.IMAGE_NAME }}"
           echo "image=${REPO}:stage" >> $GITHUB_OUTPUT
 
+      - name: Debug SSH connection
+        run: |
+          nc -zv "${{ secrets.DEPLOY_HOST }}" 22 2>&1 || true
+          ssh-keyscan -v -H "${{ secrets.DEPLOY_HOST }}" 2>&1 || true
+
       - name: Write SSH key
         run: |
           mkdir -m 700 -p ~/.ssh
