@@ -123,11 +123,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Lowercase repository name
+        id: lower
+        run: |
+          echo "repo=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ steps.lower.outputs.repo }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
             type=ref,event=tag
@@ -147,7 +152,8 @@ jobs:
       - name: Expose SHA tag for downstream
         id: sha
         run: |
-          echo "sha_image=${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_NAME }}:sha-${GITHUB_SHA}" >> $GITHUB_OUTPUT
+          REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "sha_image=${{ env.REGISTRY }}/${REPO}/${{ env.IMAGE_NAME }}:sha-${GITHUB_SHA}" >> $GITHUB_OUTPUT
 
     outputs:
       sha_image: ${{ steps.sha.outputs.sha_image }}
@@ -187,10 +193,15 @@ jobs:
       contents: read
       packages: read
     steps:
+      - name: Lowercase repository name
+        id: lower
+        run: |
+          echo "repo=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
       - name: Prepare image reference
         id: img
         run: |
-          REPO="${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_NAME }}"
+          REPO="${{ env.REGISTRY }}/${{ steps.lower.outputs.repo }}/${{ env.IMAGE_NAME }}"
           echo "image=${REPO}:stage" >> $GITHUB_OUTPUT
 
       - name: Write SSH key
@@ -231,14 +242,18 @@ jobs:
       contents: read
       packages: read
     steps:
+      - name: Lowercase repository name
+        id: lower
+        run: |
+          echo "repo=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
       - name: Prepare image reference
         id: img
         run: |
-          REPO="${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_NAME }}"
+          REPO="${{ env.REGISTRY }}/${{ steps.lower.outputs.repo }}/${{ env.IMAGE_NAME }}"
           if [ -n "${{ inputs.image_tag }}" ]; then
             echo "image=${REPO}:${{ inputs.image_tag }}" >> $GITHUB_OUTPUT
           else
-            # If no image_tag provided, default to main (or master) branch tag.
             echo "image=${REPO}:main" >> $GITHUB_OUTPUT
           fi
 
