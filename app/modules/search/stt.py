@@ -8,7 +8,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+# client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+def _get_client() -> AsyncOpenAI:
+    return AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 # OpenAI supported audio MIME types
 ALLOWED_CONTENT_TYPES = {
@@ -98,7 +100,7 @@ async def transcribe_from_r2(file_url: str, language: str = "en") -> str:
 
     # ── 3. Transcribe ──────────────────────────────────────────────────────
     try:
-        transcript = await client.audio.transcriptions.create(
+        transcript = await _get_client().audio.transcriptions.create(  # ← client() call
             model="gpt-4o-mini-transcribe",
             file=(filename, audio_bytes, content_type),
             language=language,

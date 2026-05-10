@@ -68,7 +68,7 @@ services:
     container_name: emventory_ai_app
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "5000:5000"
     env_file: .env
     environment:
       DB_HOST: pgvector_db

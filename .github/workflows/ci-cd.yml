@@ -1,0 +1,251 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - stage
+    tags:
+      - "v*.*.*"
+  pull_request:
+    branches:
+      - main
+      - master
+      - stage
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deployment environment"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      image_tag:
+        description: "Optional: image tag to deploy (e.g. sha-abc123 or v1.2.3). Empty = deploy branch tag."
+        required: false
+        default: ""
+
+env:
+  PYTHON_VERSION: "3.11"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: emventory-ai-backend
+
+jobs:
+  python-smoke:
+    name: Python smoke checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-prod.txt
+
+      - name: Import + compile check
+        env:
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_NAME: Search
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          API_SECRET: ci_dummy_secret
+          OPENAI_API_KEY: "sk-dummy-key-for-ci"
+          REDIS_ENABLED: "false"
+        run: |
+          python -c "import app.main; print('import ok')"
+          python -m compileall -q app
+
+  docker-build:
+    name: Docker build (no push)
+    runs-on: ubuntu-latest
+    needs: python-smoke
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          tags: ${{ env.IMAGE_NAME }}:ci
+
+      - name: Validate docker-compose files
+        run: |
+          docker compose -f docker-compose.prod.yml config >/dev/null
+
+  docker-publish:
+    name: Build & push image (GHCR)
+    runs-on: ubuntu-latest
+    needs: [python-smoke, docker-build]
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=sha,format=long,prefix=sha-
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Expose SHA tag for downstream
+        id: sha
+        run: |
+          echo "sha_image=${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_NAME }}:sha-${GITHUB_SHA}" >> $GITHUB_OUTPUT
+
+    outputs:
+      sha_image: ${{ steps.sha.outputs.sha_image }}
+
+  vuln-scan:
+    name: Vulnerability scan (Trivy)
+    runs-on: ubuntu-latest
+    needs: docker-publish
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+    steps:
+      - name: Scan image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ needs.docker-publish.outputs.sha_image }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [docker-publish, vuln-scan]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/stage'
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Prepare image reference
+        id: img
+        run: |
+          REPO="${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_NAME }}"
+          echo "image=${REPO}:stage" >> $GITHUB_OUTPUT
+
+      - name: Write SSH key
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.STAGE_DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.STAGE_DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy over SSH (staging)
+        env:
+          DEPLOY_HOST: ${{ secrets.STAGE_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.STAGE_DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.STAGE_DEPLOY_PATH }}
+          GHCR_USER: ${{ secrets.GHCR_USER }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          IMAGE: ${{ steps.img.outputs.image }}
+        run: |
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" bash -se <<'EOF'
+          set -euo pipefail
+          cd "${DEPLOY_PATH}"
+
+          test -f docker-compose.prod.yml
+          test -f .env.production
+          test -x scripts/deploy_blue_green.sh
+
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+          IMAGE="${IMAGE}" ENV_FILE=".env.production" COMPOSE_FILE="docker-compose.prod.yml" ./scripts/deploy_blue_green.sh
+          EOF
+
+  deploy-production:
+    name: Deploy to Production (manual)
+    runs-on: ubuntu-latest
+    needs: [docker-publish, vuln-scan]
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'production'
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Prepare image reference
+        id: img
+        run: |
+          REPO="${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_NAME }}"
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            echo "image=${REPO}:${{ inputs.image_tag }}" >> $GITHUB_OUTPUT
+          else
+            # If no image_tag provided, default to main (or master) branch tag.
+            echo "image=${REPO}:main" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Write SSH key
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy over SSH (production)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          GHCR_USER: ${{ secrets.GHCR_USER }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          IMAGE: ${{ steps.img.outputs.image }}
+        run: |
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" bash -se <<'EOF'
+          set -euo pipefail
+          cd "${DEPLOY_PATH}"
+
+          test -f docker-compose.prod.yml
+          test -f .env.production
+          test -x scripts/deploy_blue_green.sh
+
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+          IMAGE="${IMAGE}" ENV_FILE=".env.production" COMPOSE_FILE="docker-compose.prod.yml" ./scripts/deploy_blue_green.sh
+          EOF

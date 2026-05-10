@@ -35,6 +35,10 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AI Based Search")
 
+@app.get("/healthz", include_in_schema=False)
+async def healthz():
+    return {"status": "ok"}
+
 
 
 # STARTUP / SHUTDOWN
