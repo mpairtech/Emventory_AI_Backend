@@ -59,6 +59,8 @@ jobs:
           DB_USER: postgres
           DB_PASSWORD: postgres
           API_SECRET: ci_dummy_secret
+          OPENAI_API_KEY: "sk-dummy-key-for-ci"
+          REDIS_ENABLED: "false"
         run: |
           python -c "import app.main; print('import ok')"
           python -m compileall -q app
@@ -247,4 +249,3 @@ jobs:
 
           IMAGE="${IMAGE}" ENV_FILE=".env.production" COMPOSE_FILE="docker-compose.prod.yml" ./scripts/deploy_blue_green.sh
           EOF
-
