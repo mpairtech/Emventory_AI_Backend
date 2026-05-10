@@ -73,6 +73,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Create dummy .env
+        run: |
+          cat > .env <<EOF
+          OPENAI_API_KEY=dummy
+          API_SECRET=dummy
+          REDIS_ENABLED=false
+          DB_HOST=postgres
+          DB_PORT=5432
+          DB_NAME=Search
+          DB_USER=postgres
+          DB_PASSWORD=postgres
+          EOF
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -86,7 +99,7 @@ jobs:
 
       - name: Validate docker-compose files
         run: |
-          docker compose -f docker-compose.prod.yml config >/dev/null
+          ENV_FILE=.env docker compose -f docker-compose.prod.yml config >/dev/null
 
   docker-publish:
     name: Build & push image (GHCR)
