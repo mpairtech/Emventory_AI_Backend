@@ -1,5 +1,10 @@
 .git
 .github
+
+# Container image build does not COPY nginx/; omit from build context (smaller upload).
+nginx/
+docs/
+
 __pycache__/
 *.py[cod]
 *.pyo
