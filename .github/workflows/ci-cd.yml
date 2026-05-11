@@ -275,7 +275,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -m 700 -p ~/.ssh
-          printf '%s\n' "${STAGE_DEPLOY_SSH_KEY}" > ~/.ssh/id_ed25519
+          # Strip CR so keys pasted from Windows do not break OpenSSH
+          printf '%s' "${STAGE_DEPLOY_SSH_KEY}" | tr -d '\r' > ~/.ssh/id_ed25519
+          printf '\n' >> ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "${STAGE_DEPLOY_HOST}" >> ~/.ssh/known_hosts
 
@@ -296,7 +298,8 @@ jobs:
           SSH_COMMON_OPTS: ${{ env.SSH_COMMON_OPTS }}
         run: |
           set -euo pipefail
-          python3 scripts/emit_github_ssh_deploy.py | ssh ${SSH_COMMON_OPTS} "${STAGE_DEPLOY_USER}@${STAGE_DEPLOY_HOST}" bash -se
+          python3 scripts/emit_github_ssh_deploy.py > "${RUNNER_TEMP}/remote_deploy.sh"
+          ssh ${SSH_COMMON_OPTS} "${STAGE_DEPLOY_USER}@${STAGE_DEPLOY_HOST}" bash -se < "${RUNNER_TEMP}/remote_deploy.sh"
 
   deploy-production:
     name: Deploy to Production (manual)
@@ -372,7 +375,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -m 700 -p ~/.ssh
-          printf '%s\n' "${DEPLOY_SSH_KEY}" > ~/.ssh/id_ed25519
+          printf '%s' "${DEPLOY_SSH_KEY}" | tr -d '\r' > ~/.ssh/id_ed25519
+          printf '\n' >> ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
 
@@ -393,4 +397,5 @@ jobs:
           SSH_COMMON_OPTS: ${{ env.SSH_COMMON_OPTS }}
         run: |
           set -euo pipefail
-          python3 scripts/emit_github_ssh_deploy.py | ssh ${SSH_COMMON_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" bash -se
+          python3 scripts/emit_github_ssh_deploy.py > "${RUNNER_TEMP}/remote_deploy.sh"
+          ssh ${SSH_COMMON_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" bash -se < "${RUNNER_TEMP}/remote_deploy.sh"

@@ -38,12 +38,13 @@ def main() -> None:
     )
     lines = [
         "set -euo pipefail",
-        f"cd {shlex.quote(path)}",
-        "test -f docker-compose.prod.yml",
-        "test -f .env",
-        "test -x scripts/deploy_blue_green.sh",
-        login,
-        deploy,
+        'remote_fail() { echo "::error::remote: $*" >&2; exit 1; }',
+        f"cd {shlex.quote(path)} || remote_fail \"cd failed - fix REMOTE_DEPLOY_PATH / STAGE_DEPLOY_PATH or DEPLOY_PATH secret (no such dir or no permission)\"",
+        "test -f docker-compose.prod.yml || remote_fail \"missing docker-compose.prod.yml - copy it from the repo into the deploy directory on the server\"",
+        "test -f .env || remote_fail \"missing .env in deploy directory\"",
+        "test -x scripts/deploy_blue_green.sh || remote_fail \"missing or non-executable scripts/deploy_blue_green.sh - clone/copy repo scripts into the deploy directory\"",
+        "{ " + login + "; } || remote_fail \"docker login failed - check GHCR_USER / GHCR_TOKEN (PAT needs read:packages)\"",
+        "{ " + deploy + "; } || remote_fail \"deploy_blue_green.sh exited with error - see lines above on the server\"",
     ]
     sys.stdout.write("\n".join(lines) + "\n")
 
