@@ -1,5 +1,14 @@
 name: CI/CD Pipeline
 
+# Default: least privilege. Jobs that need more set explicit permissions.
+permissions:
+  contents: read
+
+# PR runs: cancel superseded runs. Branch/tag pushes: queue (no mid-deploy cancel).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 on:
   push:
     branches:
@@ -15,30 +24,35 @@ on:
       - stage
   workflow_dispatch:
     inputs:
-      environment:
-        description: "Deployment environment"
-        required: true
-        type: choice
-        options:
-          - staging
-          - production
       image_tag:
-        description: "Optional: image tag to deploy (e.g. sha-abc123 or v1.2.3). Empty = deploy branch tag."
+        description: "Optional image tag (e.g. sha-<full-sha> or v1.2.3). Empty = :main"
         required: false
         default: ""
+
+defaults:
+  run:
+    shell: bash
 
 env:
   PYTHON_VERSION: "3.11"
   REGISTRY: ghcr.io
   IMAGE_NAME: emventory-ai-backend
+  # OpenSSH: fail closed on host key mismatch after first use in same job (TOFU once per run).
+  SSH_COMMON_OPTS: "-o BatchMode=yes -o ConnectTimeout=30 -o ConnectionAttempts=3 -o StrictHostKeyChecking=accept-new"
 
 jobs:
   python-smoke:
     name: Python smoke checks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -46,10 +60,12 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
 
-      - name: Install deps
+      - name: Install deps + pip check
         run: |
-          python -m pip install --upgrade pip
+          set -euo pipefail
+          python -m pip install --upgrade "pip>=24.0"
           pip install -r requirements-prod.txt
+          pip check
 
       - name: Import + compile check
         env:
@@ -62,20 +78,28 @@ jobs:
           OPENAI_API_KEY: "sk-dummy-key-for-ci"
           REDIS_ENABLED: "false"
         run: |
+          set -euo pipefail
           python -c "import app.main; print('import ok')"
           python -m compileall -q app
 
   docker-build:
     name: Docker build (no push)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs: python-smoke
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
 
       - name: Create dummy .env
         run: |
-          cat > .env <<EOF
+          set -euo pipefail
+          cat > .env <<'EOF'
           OPENAI_API_KEY=dummy
           API_SECRET=dummy
           REDIS_ENABLED=false
@@ -95,23 +119,31 @@ jobs:
           context: .
           file: Dockerfile
           push: false
+          pull: true
           tags: ${{ env.IMAGE_NAME }}:ci
 
       - name: Validate docker-compose files
         run: |
+          set -euo pipefail
           ENV_FILE=.env docker compose -f docker-compose.prod.yml config >/dev/null
 
   docker-publish:
     name: Build & push image (GHCR)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     needs: [python-smoke, docker-build]
     if: github.event_name == 'push'
     permissions:
       contents: read
       packages: write
+      id-token: write
+      actions: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -126,7 +158,8 @@ jobs:
       - name: Lowercase repository name
         id: lower
         run: |
-          echo "repo=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          echo "repo=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - name: Extract Docker metadata
         id: meta
@@ -144,16 +177,20 @@ jobs:
           context: .
           file: Dockerfile
           push: true
+          pull: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
 
       - name: Expose SHA tag for downstream
         id: sha
         run: |
+          set -euo pipefail
           REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          echo "sha_image=${{ env.REGISTRY }}/${REPO}/${{ env.IMAGE_NAME }}:sha-${GITHUB_SHA}" >> $GITHUB_OUTPUT
+          echo "sha_image=${{ env.REGISTRY }}/${REPO}/${{ env.IMAGE_NAME }}:sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
     outputs:
       sha_image: ${{ steps.sha.outputs.sha_image }}
@@ -161,6 +198,7 @@ jobs:
   vuln-scan:
     name: Vulnerability scan (Trivy)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs: docker-publish
     if: github.event_name == 'push'
     permissions:
@@ -175,7 +213,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Scan Docker image
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ needs.docker-publish.outputs.sha_image }}
           format: table
@@ -187,34 +225,59 @@ jobs:
   deploy-staging:
     name: Deploy to Staging
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [docker-publish, vuln-scan]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/stage'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/stage' && vars.STAGING_DEPLOY_ACTIVE != 'false'
+    environment: staging
     permissions:
       contents: read
       packages: read
     steps:
+      - name: Require staging deploy secrets
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          GHCR_USER: ${{ secrets.GHCR_USER }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          set -euo pipefail
+          missing=
+          [ -z "${DEPLOY_HOST}" ] && missing="${missing} DEPLOY_HOST"
+          [ -z "${DEPLOY_USER}" ] && missing="${missing} DEPLOY_USER"
+          [ -z "${DEPLOY_SSH_KEY}" ] && missing="${missing} DEPLOY_SSH_KEY"
+          [ -z "${DEPLOY_PATH}" ] && missing="${missing} DEPLOY_PATH"
+          [ -z "${GHCR_USER}" ] && missing="${missing} GHCR_USER"
+          [ -z "${GHCR_TOKEN}" ] && missing="${missing} GHCR_TOKEN"
+          if [ -n "${missing}" ]; then
+            echo "::error::Missing required secrets (set in repo Actions secrets):${missing}"
+            exit 1
+          fi
+
       - name: Lowercase repository name
         id: lower
         run: |
-          echo "repo=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          echo "repo=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - name: Prepare image reference
         id: img
         run: |
+          set -euo pipefail
           REPO="${{ env.REGISTRY }}/${{ steps.lower.outputs.repo }}/${{ env.IMAGE_NAME }}"
-          echo "image=${REPO}:stage" >> $GITHUB_OUTPUT
+          echo "image=${REPO}:stage" >> "$GITHUB_OUTPUT"
 
-      - name: Debug SSH connection
+      - name: Write SSH key + known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
-          nc -zv "${{ secrets.DEPLOY_HOST }}" 22 2>&1 || true
-          ssh-keyscan -v -H "${{ secrets.DEPLOY_HOST }}" 2>&1 || true
-
-      - name: Write SSH key
-        run: |
+          set -euo pipefail
           mkdir -m 700 -p ~/.ssh
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          printf '%s\n' "${DEPLOY_SSH_KEY}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
 
       - name: Deploy over SSH (staging)
         env:
@@ -224,8 +287,13 @@ jobs:
           GHCR_USER: ${{ secrets.GHCR_USER }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           IMAGE: ${{ steps.img.outputs.image }}
+          SSH_COMMON_OPTS: ${{ env.SSH_COMMON_OPTS }}
         run: |
-          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" bash -se <<'EOF'
+          set -euo pipefail
+          # Pass vars to remote explicitly (quoted 'REMOTE' heredoc does not expand on the runner).
+          ssh ${SSH_COMMON_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            env DEPLOY_PATH="${DEPLOY_PATH}" IMAGE="${IMAGE}" GHCR_USER="${GHCR_USER}" GHCR_TOKEN="${GHCR_TOKEN}" \
+            bash -se <<'REMOTE'
           set -euo pipefail
           cd "${DEPLOY_PATH}"
 
@@ -233,41 +301,88 @@ jobs:
           test -f .env
           test -x scripts/deploy_blue_green.sh
 
-          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+          echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
 
           IMAGE="${IMAGE}" ENV_FILE=".env" COMPOSE_FILE="docker-compose.prod.yml" ./scripts/deploy_blue_green.sh
-          EOF
+          REMOTE
 
   deploy-production:
     name: Deploy to Production (manual)
     runs-on: ubuntu-latest
-    needs: [docker-publish, vuln-scan]
-    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'production'
+    timeout-minutes: 30
+    # workflow_dispatch is not a "push", so publish/scan jobs are skipped in this run.
+    # Require the same CI gates as a PR; deploy the image tag you choose (ideally one that passed a recent push pipeline).
+    needs: [python-smoke, docker-build]
+    if: github.event_name == 'workflow_dispatch'
+    environment: production
     permissions:
       contents: read
       packages: read
     steps:
+      - name: Validate image tag
+        env:
+          TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAG}" ]; then
+            exit 0
+          fi
+          if ! printf '%s' "${TAG}" | grep -qE '^[A-Za-z0-9._-]{1,128}$'; then
+            echo "::error::image_tag must be 1-128 characters: letters, digits, dot, underscore, hyphen only"
+            exit 1
+          fi
+
+      - name: Require production deploy secrets
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          GHCR_USER: ${{ secrets.GHCR_USER }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          set -euo pipefail
+          missing=
+          [ -z "${DEPLOY_HOST}" ] && missing="${missing} DEPLOY_HOST"
+          [ -z "${DEPLOY_USER}" ] && missing="${missing} DEPLOY_USER"
+          [ -z "${DEPLOY_SSH_KEY}" ] && missing="${missing} DEPLOY_SSH_KEY"
+          [ -z "${DEPLOY_PATH}" ] && missing="${missing} DEPLOY_PATH"
+          [ -z "${GHCR_USER}" ] && missing="${missing} GHCR_USER"
+          [ -z "${GHCR_TOKEN}" ] && missing="${missing} GHCR_TOKEN"
+          if [ -n "${missing}" ]; then
+            echo "::error::Missing required secrets:${missing}"
+            exit 1
+          fi
+
       - name: Lowercase repository name
         id: lower
         run: |
-          echo "repo=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          echo "repo=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - name: Prepare image reference
         id: img
+        env:
+          TAG: ${{ inputs.image_tag }}
         run: |
+          set -euo pipefail
           REPO="${{ env.REGISTRY }}/${{ steps.lower.outputs.repo }}/${{ env.IMAGE_NAME }}"
-          if [ -n "${{ inputs.image_tag }}" ]; then
-            echo "image=${REPO}:${{ inputs.image_tag }}" >> $GITHUB_OUTPUT
+          if [ -n "${TAG}" ]; then
+            echo "image=${REPO}:${TAG}" >> "$GITHUB_OUTPUT"
           else
-            echo "image=${REPO}:main" >> $GITHUB_OUTPUT
+            echo "image=${REPO}:main" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Write SSH key
+      - name: Write SSH key + known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
+          set -euo pipefail
           mkdir -m 700 -p ~/.ssh
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          printf '%s\n' "${DEPLOY_SSH_KEY}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
 
       - name: Deploy over SSH (production)
         env:
@@ -277,8 +392,12 @@ jobs:
           GHCR_USER: ${{ secrets.GHCR_USER }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           IMAGE: ${{ steps.img.outputs.image }}
+          SSH_COMMON_OPTS: ${{ env.SSH_COMMON_OPTS }}
         run: |
-          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" bash -se <<'EOF'
+          set -euo pipefail
+          ssh ${SSH_COMMON_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            env DEPLOY_PATH="${DEPLOY_PATH}" IMAGE="${IMAGE}" GHCR_USER="${GHCR_USER}" GHCR_TOKEN="${GHCR_TOKEN}" \
+            bash -se <<'REMOTE'
           set -euo pipefail
           cd "${DEPLOY_PATH}"
 
@@ -286,7 +405,7 @@ jobs:
           test -f .env
           test -x scripts/deploy_blue_green.sh
 
-          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+          echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
 
           IMAGE="${IMAGE}" ENV_FILE=".env" COMPOSE_FILE="docker-compose.prod.yml" ./scripts/deploy_blue_green.sh
-          EOF
+          REMOTE
