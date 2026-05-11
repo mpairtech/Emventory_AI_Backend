@@ -235,19 +235,19 @@ jobs:
     steps:
       - name: Require staging deploy secrets
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          STAGE_DEPLOY_HOST: ${{ secrets.STAGE_DEPLOY_HOST }}
+          STAGE_DEPLOY_USER: ${{ secrets.STAGE_DEPLOY_USER }}
+          STAGE_DEPLOY_SSH_KEY: ${{ secrets.STAGE_DEPLOY_SSH_KEY }}
+          STAGE_DEPLOY_PATH: ${{ secrets.STAGE_DEPLOY_PATH }}
           GHCR_USER: ${{ secrets.GHCR_USER }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
         run: |
           set -euo pipefail
           missing=
-          [ -z "${DEPLOY_HOST}" ] && missing="${missing} DEPLOY_HOST"
-          [ -z "${DEPLOY_USER}" ] && missing="${missing} DEPLOY_USER"
-          [ -z "${DEPLOY_SSH_KEY}" ] && missing="${missing} DEPLOY_SSH_KEY"
-          [ -z "${DEPLOY_PATH}" ] && missing="${missing} DEPLOY_PATH"
+          [ -z "${STAGE_DEPLOY_HOST}" ] && missing="${missing} STAGE_DEPLOY_HOST"
+          [ -z "${STAGE_DEPLOY_USER}" ] && missing="${missing} STAGE_DEPLOY_USER"
+          [ -z "${STAGE_DEPLOY_SSH_KEY}" ] && missing="${missing} STAGE_DEPLOY_SSH_KEY"
+          [ -z "${STAGE_DEPLOY_PATH}" ] && missing="${missing} STAGE_DEPLOY_PATH"
           [ -z "${GHCR_USER}" ] && missing="${missing} GHCR_USER"
           [ -z "${GHCR_TOKEN}" ] && missing="${missing} GHCR_TOKEN"
           if [ -n "${missing}" ]; then
@@ -270,41 +270,33 @@ jobs:
 
       - name: Write SSH key + known_hosts
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          STAGE_DEPLOY_HOST: ${{ secrets.STAGE_DEPLOY_HOST }}
+          STAGE_DEPLOY_SSH_KEY: ${{ secrets.STAGE_DEPLOY_SSH_KEY }}
         run: |
           set -euo pipefail
           mkdir -m 700 -p ~/.ssh
-          printf '%s\n' "${DEPLOY_SSH_KEY}" > ~/.ssh/id_ed25519
+          printf '%s\n' "${STAGE_DEPLOY_SSH_KEY}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
+          ssh-keyscan -H "${STAGE_DEPLOY_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Checkout (deploy helper)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
 
       - name: Deploy over SSH (staging)
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          STAGE_DEPLOY_HOST: ${{ secrets.STAGE_DEPLOY_HOST }}
+          STAGE_DEPLOY_USER: ${{ secrets.STAGE_DEPLOY_USER }}
+          REMOTE_DEPLOY_PATH: ${{ secrets.STAGE_DEPLOY_PATH }}
           GHCR_USER: ${{ secrets.GHCR_USER }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           IMAGE: ${{ steps.img.outputs.image }}
           SSH_COMMON_OPTS: ${{ env.SSH_COMMON_OPTS }}
         run: |
           set -euo pipefail
-          # Pass vars to remote explicitly (quoted 'REMOTE' heredoc does not expand on the runner).
-          ssh ${SSH_COMMON_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            env DEPLOY_PATH="${DEPLOY_PATH}" IMAGE="${IMAGE}" GHCR_USER="${GHCR_USER}" GHCR_TOKEN="${GHCR_TOKEN}" \
-            bash -se <<'REMOTE'
-          set -euo pipefail
-          cd "${DEPLOY_PATH}"
-
-          test -f docker-compose.prod.yml
-          test -f .env
-          test -x scripts/deploy_blue_green.sh
-
-          echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
-
-          IMAGE="${IMAGE}" ENV_FILE=".env" COMPOSE_FILE="docker-compose.prod.yml" ./scripts/deploy_blue_green.sh
-          REMOTE
+          python3 scripts/emit_github_ssh_deploy.py | ssh ${SSH_COMMON_OPTS} "${STAGE_DEPLOY_USER}@${STAGE_DEPLOY_HOST}" bash -se
 
   deploy-production:
     name: Deploy to Production (manual)
@@ -384,28 +376,21 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
 
+      - name: Checkout (deploy helper)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
       - name: Deploy over SSH (production)
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          REMOTE_DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           GHCR_USER: ${{ secrets.GHCR_USER }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           IMAGE: ${{ steps.img.outputs.image }}
           SSH_COMMON_OPTS: ${{ env.SSH_COMMON_OPTS }}
         run: |
           set -euo pipefail
-          ssh ${SSH_COMMON_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            env DEPLOY_PATH="${DEPLOY_PATH}" IMAGE="${IMAGE}" GHCR_USER="${GHCR_USER}" GHCR_TOKEN="${GHCR_TOKEN}" \
-            bash -se <<'REMOTE'
-          set -euo pipefail
-          cd "${DEPLOY_PATH}"
-
-          test -f docker-compose.prod.yml
-          test -f .env
-          test -x scripts/deploy_blue_green.sh
-
-          echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
-
-          IMAGE="${IMAGE}" ENV_FILE=".env" COMPOSE_FILE="docker-compose.prod.yml" ./scripts/deploy_blue_green.sh
-          REMOTE
+          python3 scripts/emit_github_ssh_deploy.py | ssh ${SSH_COMMON_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" bash -se
