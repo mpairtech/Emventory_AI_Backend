@@ -40,6 +40,10 @@ async def healthz():
     return {"status": "ok"}
 
 
+@app.get("/", include_in_schema=False)
+async def root():
+    return {"message": "Server is running"}
+
 
 # STARTUP / SHUTDOWN
 
