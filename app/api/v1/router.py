@@ -3,16 +3,15 @@ from typing import Optional
 from app.api.v1.routers.search import router as search_router
 from app.api.v1.routers.content import router as content_router
 
-
 from app.core.cache.cache_service import cache_service
 from app.api.v1.schemas import R2VoiceSearchRequest
 from app.modules.search.stt import transcribe_from_r2
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 
-# ── These were missing ──────────────────────────────────────────────────────
 from app.modules.search.service import SearchService
 from app.api.v1.routers.search import get_active_provider
+from app.core.config import settings
 from app.core.exceptions import (
     AudioProcessingError,
     SpeechToTextError,
@@ -23,17 +22,83 @@ from app.core.exceptions import (
     RateLimitError,
     SearchServiceException,
 )
+
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+from pydantic import BaseModel
 import logging
 
 logger = logging.getLogger(__name__)
-# ───────────────────────────────────────────────────────────────────────────
 
 router = APIRouter()
 
 
-# -----------------------------------------------
+# ---------------------------------------------------------------------------
+# R2 lazy singleton
+# ---------------------------------------------------------------------------
+
+_r2_client = None
+
+
+def _get_r2_client():
+    global _r2_client
+    if _r2_client is None:
+        _r2_client = boto3.client(
+            "s3",
+            endpoint_url=settings.R2_ENDPOINT_URL,
+            aws_access_key_id=settings.R2_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.R2_SECRET_ACCESS_KEY,
+            region_name="auto",
+        )
+    return _r2_client
+
+
+def _delete_from_r2(file_key: str) -> bool:
+    if not all([
+        settings.R2_ENDPOINT_URL,
+        settings.R2_ACCESS_KEY_ID,
+        settings.R2_SECRET_ACCESS_KEY,
+        settings.R2_BUCKET_NAME,
+    ]):
+        raise AudioProcessingError("R2 credentials are not fully configured")
+
+    try:
+        client = _get_r2_client()
+        client.delete_object(
+            Bucket=settings.R2_BUCKET_NAME,
+            Key=file_key,
+        )
+        logger.info(f"[R2] Deleted: bucket={settings.R2_BUCKET_NAME} | key={file_key}")
+        return True
+
+    except ClientError as e:
+        error_code = e.response["Error"]["Code"]
+        error_msg  = e.response["Error"]["Message"]
+        logger.error(f"[R2] ClientError deleting '{file_key}': {error_code} — {error_msg}")
+        raise AudioProcessingError(f"R2 deletion failed: {error_code} — {error_msg}")
+
+    except BotoCoreError as e:
+        logger.error(f"[R2] BotoCoreError deleting '{file_key}': {e}")
+        raise AudioProcessingError(f"R2 connection error: {str(e)}")
+
+    except Exception as e:
+        logger.error(f"[R2] Unexpected error deleting '{file_key}': {e}", exc_info=True)
+        raise AudioProcessingError(f"Unexpected R2 error: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# Schemas
+# ---------------------------------------------------------------------------
+
+class R2DeleteRequest(BaseModel):
+    file_key: str
+    org_id:   str
+
+
+# ---------------------------------------------------------------------------
 # Dependency: API Key + optional Org ID
-# -----------------------------------------------
+# ---------------------------------------------------------------------------
+
 async def verify_api_key(
     x_api_key: Optional[str] = Header(None),
     x_org_id: Optional[str] = Header(None),
@@ -43,24 +108,24 @@ async def verify_api_key(
     return {"api_key": x_api_key, "org_id": x_org_id}
 
 
-# -----------------------------------------------
-# Include existing search router
-# -----------------------------------------------
+# ---------------------------------------------------------------------------
+# Include existing routers
+# ---------------------------------------------------------------------------
+
 router.include_router(
     search_router,
     dependencies=[Depends(verify_api_key)]
 )
 router.include_router(
-    content_router,                          
-    dependencies=[Depends(verify_api_key)]   
+    content_router,
+    dependencies=[Depends(verify_api_key)]
 )
-           
-    
 
 
-# -----------------------------------------------
+# ---------------------------------------------------------------------------
 # Cache Management Endpoints
-# -----------------------------------------------
+# ---------------------------------------------------------------------------
+
 @router.get("/cache/stats", summary="Get cache statistics")
 def get_cache_stats(
     org_id: str | None = Query(None, description="Organization ID to check stats for"),
@@ -105,9 +170,10 @@ def clear_all_cache(
         )
 
 
-# -----------------------------------------------
+# ---------------------------------------------------------------------------
 # Voice Search
-# -----------------------------------------------
+# ---------------------------------------------------------------------------
+
 @router.post("/voice")
 async def voice_search(
     request: R2VoiceSearchRequest,
@@ -144,7 +210,7 @@ async def voice_search(
 
     logger.info(f"[VoiceSearch] org={request.org_id} | transcript='{transcript[:120]}'")
 
-    # 2. Resolve provider (mirrors /rag logic with fallback)
+    # 2. Resolve provider
     if request.provider:
         provider = request.provider.lower().strip()
         if provider not in ["gemini", "openai"]:
@@ -169,8 +235,8 @@ async def voice_search(
         )
         return {
             "transcript": transcript,
-            "answer": result["answer"],
-            "sources": result["sources"],
+            "answer":     result["answer"],
+            "sources":    result["sources"],
         }
 
     except (LLMGenerationError, RateLimitError) as e:
@@ -186,8 +252,8 @@ async def voice_search(
             )
             return {
                 "transcript": transcript,
-                "answer": result["answer"],
-                "sources": result["sources"],
+                "answer":     result["answer"],
+                "sources":    result["sources"],
             }
         except Exception as fallback_err:
             raise HTTPException(
@@ -203,4 +269,43 @@ async def voice_search(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Delete R2 Audio File
+# ---------------------------------------------------------------------------
+
+@router.delete("/voice/audio", status_code=status.HTTP_200_OK)
+async def delete_audio(
+    body: R2DeleteRequest,
+    _: None = Depends(verify_api_key),
+):
+    """
+    Delete an audio file from Cloudflare R2 by its object key.
+    file_key is the filename only e.g. 'harvard.wav' — not the full URL.
+    """
+    logger.info(f"[R2Delete] org={body.org_id} | key={body.file_key}")
+
+    try:
+        _delete_from_r2(body.file_key)
+        return {
+            "status":   "deleted",
+            "org_id":   body.org_id,
+            "file_key": body.file_key,
+            "message":  f"Audio file '{body.file_key}' deleted from R2 successfully",
+        }
+
+    except AudioProcessingError as e:
+        logger.warning(f"[R2Delete] Failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
+
+    except Exception as e:
+        logger.error(f"[R2Delete] Unexpected error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unexpected error during R2 deletion.",
         )
