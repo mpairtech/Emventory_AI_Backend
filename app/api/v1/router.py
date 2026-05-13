@@ -225,7 +225,7 @@ async def voice_search(
 
     # 3. RAG pipeline
     try:
-        result = SearchService.rag_search(
+        result = await SearchService.rag_search(
             db,
             transcript,
             org_id=request.org_id,
@@ -242,7 +242,7 @@ async def voice_search(
     except (LLMGenerationError, RateLimitError) as e:
         logger.warning(f"[VoiceSearch] Provider '{provider}' failed, trying '{fallback_provider}': {e}")
         try:
-            result = SearchService.rag_search(
+            result = await SearchService.rag_search(
                 db,
                 transcript,
                 org_id=request.org_id,
