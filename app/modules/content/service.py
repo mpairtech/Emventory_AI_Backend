@@ -28,8 +28,6 @@ ELECTRONIC_KEYWORDS = {
 
 # ---------------------------------------------------------------------------
 # Variant style definitions
-# Each dict describes one post style. `count` variants are sampled from this
-# list in order, so adding more styles here automatically increases variety.
 # ---------------------------------------------------------------------------
 
 VARIANT_STYLES = [
@@ -85,6 +83,24 @@ VARIANT_STYLES = [
 
 
 # ---------------------------------------------------------------------------
+# Lazy singleton
+# ---------------------------------------------------------------------------
+
+_openai_client: OpenAI | None = None
+
+def _get_client() -> OpenAI:
+    global _openai_client
+    if _openai_client is None:
+        if not settings.OPENAI_API_KEY:
+            raise LLMGenerationError("OPENAI_API_KEY is not configured")
+        try:
+            _openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        except Exception as e:
+            raise LLMGenerationError(f"Failed to initialise OpenAI client: {e}")
+    return _openai_client
+
+
+# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
@@ -92,15 +108,6 @@ def _is_electronic(category: Optional[str], name: Optional[str] = None) -> bool:
     """Check if the product is electronics based on category or product name."""
     text = f"{category or ''} {name or ''}".lower()
     return any(kw in text for kw in ELECTRONIC_KEYWORDS)
-
-
-def _get_client() -> OpenAI:
-    if not settings.OPENAI_API_KEY:
-        raise LLMGenerationError("OPENAI_API_KEY is not configured")
-    try:
-        return OpenAI(api_key=settings.OPENAI_API_KEY)
-    except Exception as e:
-        raise LLMGenerationError(f"Failed to initialise OpenAI client: {e}")
 
 
 def _build_product_summary(
@@ -300,10 +307,6 @@ Return ONLY the JSON object. Nothing else."""
 
 
 def _build_variants_system_prompt(language: str, region: str) -> str:
-    """
-    System prompt for variant generation.
-    Tone-neutral — the user prompt injects per-variant style descriptions instead.
-    """
     return (
         f"You are a world-class social media copywriter specialising in ecommerce product promotions "
         f"for Facebook and Instagram. "
@@ -322,11 +325,6 @@ def _build_variants_user_prompt(
     price: Union[str, float, None],
     shop_address: Optional[str],
 ) -> str:
-    """
-    Asks the LLM to generate N social post variants in a single call.
-    Each variant follows a distinct style from VARIANT_STYLES.
-    Price and shop_address are injected as guaranteed fields when provided.
-    """
     price_instruction = (
         f'Each variant MUST end with the line: "[Product Name] — Price: {price}/-"'
         if price else
@@ -535,14 +533,6 @@ class ContentGenerationService:
         shop_address: Optional[str] = None,
         count: int = 4,
     ) -> list[dict]:
-        """
-        Generate `count` distinct social media post variants in a single OpenAI call.
-
-        Each variant uses a different writing style drawn from VARIANT_STYLES.
-        Returns a list of dicts: [{"label": str, "post_body": str, "hashtags": list[str]}]
-
-        count is clamped to the number of available styles (currently 6).
-        """
         count  = max(1, min(count, len(VARIANT_STYLES)))
         styles = VARIANT_STYLES[:count]
 
@@ -550,7 +540,6 @@ class ContentGenerationService:
         system_prompt   = _build_variants_system_prompt(language, region)
         user_prompt     = _build_variants_user_prompt(product_summary, styles, price, shop_address)
 
-        # Variants response is larger — raise token ceiling accordingly.
         raw = ContentGenerationService._call_openai(
             system_prompt, user_prompt, name, "VariantsGen",
             max_tokens_override=4096,
@@ -569,8 +558,6 @@ class ContentGenerationService:
             hashtags  = [str(h).strip().lstrip("#") for h in v.get("hashtags", []) if h]
             label     = str(v.get("label", "")).strip()
 
-            # Guaranteed closing injection — same pattern as /social and /ad.
-            # Prevents the LLM from omitting price/address despite prompt instructions.
             if post_body:
                 lines     = post_body.rstrip().split("\n")
                 last_line = lines[-1].strip().lower()
@@ -580,7 +567,6 @@ class ContentGenerationService:
 
                 if price:
                     price_trigger = str(price).lower()
-                    # Strip any existing price line the LLM may have written
                     filtered = [
                         ln for ln in post_body.split("\n")
                         if price_trigger not in ln.lower() or "price:" not in ln.lower()

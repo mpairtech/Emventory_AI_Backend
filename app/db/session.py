@@ -1,19 +1,48 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import Column, event
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from app.core.config import settings
 
-engine = create_engine(
-    settings.DATABASE_URL,
+
+def _async_database_url() -> str:
+    url = settings.DATABASE_URL
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+asyncpg://", 1)
+    return url
+
+
+engine = create_async_engine(
+    _async_database_url(),
     future=True,
     pool_size=10,
     max_overflow=5,
     pool_pre_ping=True,
+    connect_args={ "ssl": "require"},
 )
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
+# Force search_path on every new connection
+@event.listens_for(engine.sync_engine, "connect")
+def set_search_path(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("SET search_path TO public")
+    cursor.close()
+
+
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    autoflush=False,
+    autocommit=False,
+    expire_on_commit=False,
+)
+
+
+async def get_db() -> AsyncSession:
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise

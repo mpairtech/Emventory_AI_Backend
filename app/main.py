@@ -58,27 +58,26 @@ async def startup_event():
     - Debug route logging
     """
 
-    #  Database Initialization 
+    #  Database Initialization
     try:
-        with engine.begin() as conn:
-            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-
-        Base.metadata.create_all(bind=engine)
+        async with engine.begin() as conn:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            await conn.run_sync(Base.metadata.create_all)
         logger.info("Database initialized successfully.")
     except Exception as e:
         logger.error(f"Database initialization failed: {e}", exc_info=True)
 
-    # Redis Initialization 
-    try:
-        if settings.REDIS_ENABLED:
-            if redis_client.is_available:
-                logger.info("Redis cache initialized successfully.")
-            else:
-                logger.warning("Redis unavailable — running without cache.")
-        else:
-            logger.info("Redis disabled by configuration.")
-    except Exception as e:
-        logger.warning(f"Redis initialization error: {e}")
+    # Redis Initialization
+    #try:
+        #if settings.REDIS_ENABLED:
+            #if redis_client.is_available:
+                #logger.info("Redis cache initialized successfully.")
+           # else:
+               # logger.warning("Redis unavailable — running without cache.")
+       # else:
+            #logger.info("Redis disabled by configuration.")
+   # except Exception as e:
+        #logger.warning(f"Redis initialization error: {e}")
 
     # -------- Route Debug Logging --------
     routes = [
@@ -176,4 +175,3 @@ async def general_exception_handler(request: Request, exc: Exception):
 app.include_router(router, prefix="/api/v1")
 app.include_router(speech_router, prefix="/api/v1")
 app.include_router(revoke_router, prefix="/api/v1")
-
