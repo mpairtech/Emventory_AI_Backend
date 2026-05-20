@@ -22,7 +22,7 @@ if [[ ! -f "${ENV_FILE}" ]]; then
 fi
 
 # Basic env validation (fail fast on missing critical vars)
-required_vars=(API_SECRET DB_NAME DB_USER DB_PASSWORD GEMINI_API_KEY)
+required_vars=(API_SECRET DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD GEMINI_API_KEY)
 for v in "${required_vars[@]}"; do
   if ! grep -Eq "^${v}=" "${ENV_FILE}"; then
     echo "ERROR: ${ENV_FILE} missing ${v}=..." >&2
@@ -47,8 +47,15 @@ fi
 
 echo "Active=${ACTIVE}, deploying NEW=${NEW}"
 
-echo "Starting postgres (if not running)..."
-IMAGE="${IMAGE}" ENV_FILE="${ENV_FILE}" docker compose -f "${COMPOSE_FILE}" up -d postgres nginx
+echo "Starting nginx (database is external via .env DB_*)..."
+compose_up=(docker compose -f "${COMPOSE_FILE}")
+if grep -Eq '^DB_HOST=postgres$' "${ENV_FILE}"; then
+  echo "DB_HOST=postgres — also starting bundled postgres (profile local-db)..."
+  compose_up+=(--profile local-db)
+  IMAGE="${IMAGE}" ENV_FILE="${ENV_FILE}" "${compose_up[@]}" up -d postgres nginx
+else
+  IMAGE="${IMAGE}" ENV_FILE="${ENV_FILE}" "${compose_up[@]}" up -d nginx
+fi
 
 echo "Pulling image ${IMAGE}..."
 IMAGE="${IMAGE}" ENV_FILE="${ENV_FILE}" docker compose -f "${COMPOSE_FILE}" pull "app_${NEW}"

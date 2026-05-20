@@ -64,6 +64,7 @@ def _apply_yaml_defaults() -> None:
 
     app_cfg = data.get("app") or {}
     db_cfg = data.get("db") or {}
+    redis_cfg = data.get("redis") or {}
 
     # app
     _set_env_default("LOG_LEVEL", app_cfg.get("log_level"))
@@ -75,6 +76,7 @@ def _apply_yaml_defaults() -> None:
     _set_env_default("DB_NAME", db_cfg.get("name"))
     _set_env_default("DB_USER", db_cfg.get("user"))
     _set_env_default("DB_PASSWORD", db_cfg.get("password"))
+    _set_env_default("DB_SSL", db_cfg.get("ssl"))
     # redis
     _set_env_default("REDIS_HOST", redis_cfg.get("host"))
     _set_env_default("REDIS_PORT", redis_cfg.get("port"))
@@ -95,6 +97,8 @@ class Settings(BaseSettings):
     DB_NAME: str
     DB_USER: str
     DB_PASSWORD: str
+    # SSL for asyncpg: auto (neon.tech => require), require, or disable
+    DB_SSL: str = "auto"
     GEMINI_API_KEY: str | None = None
     # Optional: OpenAI configuration for text generation / search
     OPENAI_API_KEY: str | None = None
@@ -193,6 +197,16 @@ class Settings(BaseSettings):
     @property
     def DATABASE_URL(self) -> str:
         return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+
+    @property
+    def db_connect_args(self) -> dict:
+        mode = (self.DB_SSL or "auto").strip().lower()
+        if mode == "auto":
+            mode = "require" if "neon.tech" in self.DB_HOST.lower() else "disable"
+        if mode in {"require", "true", "yes", "1"}:
+            return {"ssl": "require"}
+        return {}
+
     @property
     def MAX_AUDIO_SIZE_BYTES(self) -> int:
         return self.SPEECH_MAX_AUDIO_SIZE_MB * 1024 * 1024

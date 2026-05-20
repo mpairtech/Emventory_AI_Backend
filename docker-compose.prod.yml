@@ -1,5 +1,9 @@
+# Production: app + nginx. Database is external (e.g. Neon) via .env DB_* vars.
+# Optional bundled Postgres (dev/staging only): docker compose --profile local-db up -d postgres
+
 services:
   postgres:
+    profiles: ["local-db"]
     image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
@@ -31,12 +35,6 @@ services:
     restart: unless-stopped
     env_file:
       - ${ENV_FILE:-.env}
-    environment:
-      DB_HOST: postgres
-      DB_PORT: "5432"
-    depends_on:
-      postgres:
-        condition: service_healthy
 
   app_green:
     <<: *app_base

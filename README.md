@@ -105,12 +105,20 @@ For a limited test window (e.g. a few days on a throwaway VM or a temp directory
 On your KVM host, keep a deployment folder (example: `/opt/emventory-ai-backend`) with:
 
 - `docker-compose.prod.yml` (from this repo)
-- `.env` (your production env file; start from `.env.example`)
+- `.env` (production secrets; start from `.env.example`)
 
-Then run:
+Set **Neon** (or any external Postgres) in `.env`: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`. `DB_SSL=auto` enables SSL for `*.neon.tech` hosts.
+
+Then run (app + nginx only; no bundled Postgres):
 
 ```bash
 ENV_FILE=.env docker compose -f docker-compose.prod.yml up -d
+```
+
+Optional bundled Postgres for staging (`DB_HOST=postgres` in `.env`):
+
+```bash
+ENV_FILE=.env docker compose -f docker-compose.prod.yml --profile local-db up -d
 ```
 
 ## One-off DB init (optional)

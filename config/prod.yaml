@@ -1,20 +1,15 @@
-# Production configuration (template)
-#
-# This file is optional and NOT consumed by the app right now.
-# The application uses environment variables via `app/core/config.py`.
-#
-# Recommended approach:
-# - Provide secrets via environment variables / secret manager
-# - Avoid committing any real credentials here
+# Production YAML defaults (optional). Real env / .env on the server override these.
+# Set APP_ENV=prod to load this file as defaults (see app/core/config.py).
 
 app:
   log_level: INFO
   active_provider: gemini
 
 db:
-  host: your-db-host
+  # Neon example — copy values from Neon connection string into server .env
+  host: ep-xxxx.region.aws.neon.tech
   port: 5432
-  name: Search
-  user: postgres
+  name: neondb
+  user: your_neon_user
   password: change_me
-
+  ssl: auto
