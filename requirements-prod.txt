@@ -5,6 +5,7 @@ uvicorn==0.40.0
 gunicorn==23.0.0
 
 SQLAlchemy==2.0.45
+asyncpg==0.30.0
 psycopg2-binary==2.9.11
 pgvector==0.4.2
 
@@ -24,6 +25,12 @@ openai==2.15.0
 # Misc
 PyYAML==6.0.3
 rich==14.2.0
+
+# AWS S3 / Cloudflare R2 (voice + object storage)
+boto3==1.35.99
+
+# Speech router audio helpers (Whisper ML stack is in requirements-ml.txt)
+numpy==2.2.6
 
 #file upload 
 python-multipart
