@@ -5,7 +5,10 @@ from datetime import datetime
 # Max text length for embedding to avoid token limit 
 EMBEDDING_TEXT_MAX_LENGTH = 8192
 QUERY_MAX_LENGTH = 500
-
+AUDIENCE_PERSONAS = Literal[
+    "students", "gamers", "professionals", "parents",
+    "business_owners", "content_creators", "travelers"
+]
 
 class ProductIndexRequest(BaseModel):
     """Only these fields are accepted. Extra fields in request body are rejected (422)."""
@@ -227,5 +230,39 @@ class SocialPostResponse(BaseModel):
     provider: str
 
 
+class ImproveDescriptionRequest(BaseModel):
+    raw_description: str = Field(
+        ...,
+        min_length=10,
+        description="User-written product description to improve"
+    )
+    tone: str = Field(
+        default="formal",
+        description="One of: formal, casual, persuasive"
+    )
+    language: str = "english"
+    region: str = "BD"
 
+class ImprovedDescriptionContent(BaseModel):
+    content: str
+    word_count: int
+    char_count: int
 
+class ImproveDescriptionResponse(BaseModel):
+    tone: str
+    language: str
+    region: str
+    description: ImprovedDescriptionContent
+    provider: str
+class SocialPostRequest(BaseModel):
+    product_data: ProductData
+    region: str = "BD"
+    language: str = "english"
+    tone: Literal["formal", "casual", "persuasive"] = "casual"
+    query: Optional[str] = None
+    price: Optional[str] = None
+    shop_address: Optional[str] = None
+    target_audience: Optional[str] = Field(
+        default=None,
+        description="Audience persona e.g. 'students', 'gamers', 'professionals'",
+    )
