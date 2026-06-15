@@ -1,9 +1,11 @@
 """
-Query classifier for hybrid search weight selection.
+Query classifier for hybrid search pipeline.
 
-Domain-agnostic — uses only linguistic signals, no hardcoded
-product terms. Works across all org types (clothing, electronics,
-cosmetics, jewelry, stationery, etc.).
+Detects:
+1. Query type (keyword / semantic / balanced) -> BM25 vs vector weights
+2. Intent type -> informs filter builder and reranker behavior
+
+Domain-agnostic -- pure linguistic signals, no hardcoded product terms.
 """
 
 from __future__ import annotations
@@ -13,66 +15,68 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class QueryWeights:
+class QueryClassification:
     vector_weight: float
     bm25_weight: float
-    query_type: str  # "semantic" | "keyword" | "balanced"
+    query_type: str          # "semantic" | "keyword" | "balanced"
+    intent: str              # see INTENT_* constants below
+    intent_confidence: float # 0.0 - 1.0
 
 
 # ---------------------------------------------------------------------------
-# Linguistic signal detectors  (pure functions, no domain knowledge)
+# Intent constants
 # ---------------------------------------------------------------------------
 
-# Tokens that look like product codes / model numbers / SKUs
+INTENT_EXACT_LOOKUP   = "exact_lookup"    # "Sony WF-1000XM5 price"
+INTENT_RECOMMENDATION = "recommendation"  # "suggest me a good laptop"
+INTENT_COMPARISON     = "comparison"      # "difference between X and Y"
+INTENT_PRICE_FILTER   = "price_filter"    # "laptops under $500"
+INTENT_AVAILABILITY   = "availability"    # "is X in stock"
+INTENT_FEATURE_SEARCH = "feature_search"  # "waterproof earbuds with ANC"
+INTENT_BROWSE         = "browse"          # "show me all laptops"
+INTENT_GENERAL        = "general"         # fallback
+
+
+# ---------------------------------------------------------------------------
+# Patterns
+# ---------------------------------------------------------------------------
+
 _CODE_PATTERN = re.compile(
-    r"""
-    \b(
-        [A-Z]{1,5}\d{2,}       |   # S24, XM5, RTX4070
-        \d{2,}[A-Z]{1,5}       |   # 4070Ti
-        [A-Z]+-\d+[\w-]*       |   # WH-1000XM5, XPS-15
-        [A-Z]{2,}\d+[A-Z]*     |   # IP68, USB3C
-        \d+[A-Z]{1,3}\b            # 256GB, 12MP, 5000mAh
-    )\b
-    """,
+    r"""\b([A-Z]{1,5}\d{2,}|\d{2,}[A-Z]{1,5}|[A-Z]+-\d+[\w-]*|[A-Z]{2,}\d+[A-Z]*|\d+[A-Z]{1,3})\b""",
     re.VERBOSE,
 )
+_ALLCAPS_PATTERN      = re.compile(r"\b[A-Z]{2,}\b")
+_QUESTION_PATTERN     = re.compile(r"^(what|which|who|how|where|when|why|is|are|can|should)\b", re.IGNORECASE)
+_RECOMMEND_PATTERN    = re.compile(r"\b(suggest|recommend|best|good|top|ideal|perfect|suitable|help|need|want|looking)\b", re.IGNORECASE)
+_COMPARE_PATTERN      = re.compile(r"\b(vs|versus|compare|difference|better|between|or)\b", re.IGNORECASE)
+_PRICE_PATTERN        = re.compile(r"\b(under|below|above|over|between|cheap|budget|affordable|expensive|premium|price|cost|taka|tk|\$)\b", re.IGNORECASE)
+_AVAILABILITY_PATTERN = re.compile(r"\b(in stock|available|stock|availability|have|got|exist)\b", re.IGNORECASE)
+_FEATURE_PATTERN      = re.compile(r"\b(with|without|has|have|support|feature|waterproof|wireless|bluetooth|usb|hdmi|anc|noise)\b", re.IGNORECASE)
+_BROWSE_PATTERN       = re.compile(r"^(show|list|display|give me all|all|browse|see all|find all)\b", re.IGNORECASE)
 
-# All-caps words that are likely attributes/codes (XL, USB, HDMI, SKU)
-_ALLCAPS_PATTERN = re.compile(r"\b[A-Z]{2,}\b")
-
-# Question / intent patterns → semantic
-_QUESTION_PATTERN = re.compile(
-    r"^(what|which|who|how|where|when|why|is|are|can|should|suggest|recommend|help|find|show|give)\b",
-    re.IGNORECASE,
-)
-
-# Natural language filler words → semantic
 _FILLER_WORDS = frozenset({
-    "the", "a", "an", "for", "me", "my", "some", "any", "good",
-    "best", "nice", "great", "something", "anything", "with", "and",
-    "or", "but", "that", "this", "those", "these", "need", "want",
-    "looking", "suggest", "recommend", "daily", "use", "using",
-    "budget", "affordable", "cheap", "expensive", "premium",
+    "the", "a", "an", "for", "me", "my", "some", "any", "good", "best",
+    "nice", "great", "something", "anything", "with", "and", "or", "but",
+    "that", "this", "those", "these", "need", "want", "looking", "suggest",
+    "recommend", "daily", "use", "using", "budget", "affordable", "cheap",
+    "expensive", "premium",
 })
 
 
-def _count_code_tokens(query: str) -> int:
-    return len(_CODE_PATTERN.findall(query))
-
-
-def _count_allcaps_tokens(query: str) -> int:
-    return len(_ALLCAPS_PATTERN.findall(query))
-
-
-def _token_count(query: str) -> int:
-    return len(query.split())
-
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def _filler_ratio(tokens: list[str]) -> float:
     if not tokens:
         return 0.0
-    filler = sum(1 for t in tokens if t.lower() in _FILLER_WORDS)
-    return filler / len(tokens)
+    return sum(1 for t in tokens if t.lower() in _FILLER_WORDS) / len(tokens)
+
+
+def _unique_token_ratio(tokens: list[str]) -> float:
+    if not tokens:
+        return 0.0
+    return len(set(t.lower() for t in tokens)) / len(tokens)
 
 
 def _has_digits(query: str) -> bool:
@@ -83,78 +87,86 @@ def _has_hyphenated_term(query: str) -> bool:
     return bool(re.search(r"\b\w+-\w+\b", query))
 
 
-def _is_question(query: str) -> bool:
-    return bool(_QUESTION_PATTERN.match(query.strip()))
-
-
-def _unique_token_ratio(tokens: list[str]) -> float:
-    """High ratio = many distinct words = more natural language."""
-    if not tokens:
-        return 0.0
-    return len(set(t.lower() for t in tokens)) / len(tokens)
-
-
 # ---------------------------------------------------------------------------
-# Main classifier
+# Intent detection
 # ---------------------------------------------------------------------------
 
-def classify_query(query: str) -> QueryWeights:
-    """
-    Classify query into search weights using linguistic signals only.
-
-    Returns (vector_weight, bm25_weight) where both sum to 1.0.
-
-    Signal scoring:
-      BM25 signals  → short query, digits, codes, allcaps, hyphens
-      Vector signals → question form, high filler ratio, long query
-
-    Scale: each signal contributes ±1 to a score.
-    Score < -1  → semantic dominant  (0.8 vector, 0.2 bm25)
-    Score -1..1 → balanced           (0.5 vector, 0.5 bm25)
-    Score > 1   → keyword dominant   (0.2 vector, 0.8 bm25)
-    """
-    if not query or not query.strip():
-        return QueryWeights(0.5, 0.5, "balanced")
-
+def _detect_intent(query: str) -> tuple[str, float]:
     q = query.strip()
-    tokens = q.split()
-    n = len(tokens)
-    filler_r = _filler_ratio(tokens)
-    unique_r = _unique_token_ratio(tokens)
-    codes = _count_code_tokens(q)
-    allcaps = _count_allcaps_tokens(q)
 
-    score = 0  # positive → BM25, negative → vector
+    codes   = _CODE_PATTERN.findall(q)
+    allcaps = _ALLCAPS_PATTERN.findall(q)
+    if codes or (allcaps and len(q.split()) <= 4):
+        return INTENT_EXACT_LOOKUP, 0.90
 
-    # --- BM25 signals ---
-    if n <= 2:
-        score += 2          # very short → almost certainly keyword
-    elif n <= 4:
-        score += 1          # short → lean BM25
+    if _AVAILABILITY_PATTERN.search(q):
+        return INTENT_AVAILABILITY, 0.85
 
-    if codes >= 1:
-        score += 2          # model numbers / SKUs → BM25 critical
-    if allcaps >= 1:
-        score += 1          # XL, USB, HDMI etc.
-    if _has_digits(q):
-        score += 1          # numeric specs, prices, model numbers
-    if _has_hyphenated_term(q):
-        score += 1          # WH-1000XM5, in-stock etc.
+    if _COMPARE_PATTERN.search(q):
+        return INTENT_COMPARISON, 0.85
 
-    # --- Vector signals ---
-    if _is_question(q):
-        score -= 2          # "suggest me...", "what is best..." → semantic
-    if filler_r > 0.4:
-        score -= 2          # lots of filler → natural language → semantic
-    if n >= 8:
-        score -= 1          # long query → natural language
-    if unique_r > 0.85 and n >= 5:
-        score -= 1          # many distinct words → conversational
+    if _PRICE_PATTERN.search(q):
+        return INTENT_PRICE_FILTER, 0.80
 
-    # --- Map score to weights ---
-    if score >= 2:
-        return QueryWeights(0.2, 0.8, "keyword")
-    elif score <= -2:
-        return QueryWeights(0.8, 0.2, "semantic")
-    else:
-        return QueryWeights(0.5, 0.5, "balanced")
+    if _BROWSE_PATTERN.match(q):
+        return INTENT_BROWSE, 0.80
+
+    if _RECOMMEND_PATTERN.search(q):
+        return INTENT_RECOMMENDATION, 0.75
+
+    if _FEATURE_PATTERN.search(q):
+        return INTENT_FEATURE_SEARCH, 0.70
+
+    return INTENT_GENERAL, 0.50
+
+
+# ---------------------------------------------------------------------------
+# Weight classification
+# ---------------------------------------------------------------------------
+
+def _classify_weights(query: str) -> tuple[float, float, str]:
+    tokens = query.strip().split()
+    n      = len(tokens)
+
+    score = 0
+
+    if n <= 2:        score += 2
+    elif n <= 4:      score += 1
+    if _CODE_PATTERN.findall(query):               score += 2
+    if _ALLCAPS_PATTERN.findall(query):            score += 1
+    if _has_digits(query):                         score += 1
+    if _has_hyphenated_term(query):                score += 1
+    if _QUESTION_PATTERN.match(query.strip()):     score -= 2
+    if _filler_ratio(tokens) > 0.4:               score -= 2
+    if n >= 8:                                     score -= 1
+    if _unique_token_ratio(tokens) > 0.85 and n >= 5: score -= 1
+
+    if score >= 2:    return 0.2, 0.8, "keyword"
+    elif score <= -2: return 0.8, 0.2, "semantic"
+    else:             return 0.5, 0.5, "balanced"
+
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
+def classify_query(query: str) -> QueryClassification:
+    if not query or not query.strip():
+        return QueryClassification(0.5, 0.5, "balanced", INTENT_GENERAL, 0.0)
+
+    vector_w, bm25_w, q_type = _classify_weights(query)
+    intent, confidence        = _detect_intent(query)
+
+    # Intent overrides weights
+    if intent == INTENT_EXACT_LOOKUP:
+        vector_w, bm25_w, q_type = 0.1, 0.9, "keyword"
+    elif intent in (INTENT_RECOMMENDATION, INTENT_BROWSE):
+        vector_w, bm25_w, q_type = 0.8, 0.2, "semantic"
+
+    return QueryClassification(
+        vector_weight=vector_w,
+        bm25_weight=bm25_w,
+        query_type=q_type,
+        intent=intent,
+        intent_confidence=confidence,
+    )

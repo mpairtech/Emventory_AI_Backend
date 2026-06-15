@@ -17,17 +17,14 @@ from app.core.llm.gemini import GeminiClient
 from app.core.llm.openai import OpenAIClient
 from app.core.vector.pgvector import VectorStore
 from app.db.models.vector import ProductVector
-from app.modules.search.classifier import classify_query
+from app.modules.search.classifier import classify_query, QueryClassification
 from app.modules.search.embeddings import EmbeddingService
+from app.modules.search.reranker import rerank
 from app.modules.search.repository import SearchRepository
 
 logger = logging.getLogger(__name__)
 
 _SYNONYM_MAP: Dict[str, Set[str]] = {}
-
-# ---------------------------------------------------------------------------
-# Async OpenAI singleton for filter extraction
-# ---------------------------------------------------------------------------
 
 _async_filter_client: AsyncOpenAI | None = None
 
@@ -42,7 +39,7 @@ def _get_filter_client() -> AsyncOpenAI:
 class SearchService:
 
     # ============================================================
-    # QUERY PREPARATION  (pure CPU — synchronous)
+    # QUERY PREPARATION
     # ============================================================
 
     @staticmethod
@@ -55,9 +52,7 @@ class SearchService:
 
     @staticmethod
     def _expand_with_synonyms(words: Set[str]) -> Set[str]:
-        if not words:
-            return set()
-        if not _SYNONYM_MAP:
+        if not words or not _SYNONYM_MAP:
             return set(words)
         expanded: Set[str] = set(words)
         for w in list(words):
@@ -77,7 +72,9 @@ class SearchService:
         return " ".join(sorted(expanded))
 
     # ============================================================
-    # PHASE 1 — AUTO FILTER EXTRACTION  (async — calls OpenAI)
+    # STEP 1 — STRUCTURED FILTER BUILDER
+    # Extracts only reliable fields: brand, price, status.
+    # Category intentionally excluded — matched by hybrid search.
     # ============================================================
 
     @staticmethod
@@ -109,7 +106,7 @@ Examples:
 "show me laptops" → {{}}
 
 Rules:
-- NEVER extract category — category matching is handled by semantic/hybrid search
+- NEVER extract category — handled by semantic/hybrid search
 - Only extract brand if a specific brand name is explicitly mentioned
 - For price, convert to number ("$1000" → 1000, "1000 dollar" → 1000)
 - For brand, use proper case ("Dell", "Samsung", "Apple")
@@ -122,10 +119,10 @@ Rules:
             extracted = json.loads(response.choices[0].message.content)
             clean = {k: v for k, v in extracted.items() if v is not None and v != ""}
             if clean:
-                logger.info("Auto-extracted filters from query '%s': %s", query, clean)
+                logger.info("Extracted filters from query '%s': %s", query, clean)
             return clean
         except Exception as e:
-            logger.warning("Filter extraction failed, proceeding without filters: %s", e)
+            logger.warning("Filter extraction failed: %s", e)
             return {}
 
     @staticmethod
@@ -136,11 +133,11 @@ Rules:
             from app.api.v1.schemas import SearchFilters
             return SearchFilters(**extracted)
         except Exception as e:
-            logger.warning("Could not build SearchFilters from extracted: %s", e)
+            logger.warning("Could not build SearchFilters: %s", e)
             return None
 
     # ============================================================
-    # FILTER HELPER  (pure CPU — synchronous)
+    # STEP 2 — METADATA FILTER (post-retrieval)
     # ============================================================
 
     @staticmethod
@@ -152,9 +149,6 @@ Rules:
 
         filtered = []
         for item in results:
-            if filters.category:
-                if (item.get("category") or "").strip().lower() != filters.category.strip().lower():
-                    continue
             if filters.brand:
                 if (item.get("brand") or "").strip().lower() != filters.brand.strip().lower():
                     continue
@@ -173,7 +167,7 @@ Rules:
         return filtered
 
     # ============================================================
-    # RANKING LOGIC  (pure CPU — synchronous)
+    # STEP 3 — POST-PROCESS / THRESHOLD FILTERING
     # ============================================================
 
     @staticmethod
@@ -185,13 +179,6 @@ Rules:
         max_items: int = 10,
         is_hybrid: bool = False,
     ) -> List[Dict[str, Any]]:
-        """
-        Re-rank results with lexical, rating, review, and availability bonuses.
-
-        For hybrid results (is_hybrid=True), similarity_score is an RRF score
-        (small float ~0.001–0.02), so min_score threshold is skipped —
-        RRF already handled relevance cutoff via rank fusion.
-        """
         if not results:
             return []
 
@@ -206,15 +193,14 @@ Rules:
 
         max_base = max(base_scores)
 
-        # For pure vector results, apply score floor.
-        # For hybrid RRF results, skip threshold — RRF scores are not
-        # cosine similarities and should not be compared to min_score.
         if not is_hybrid:
             if max_base < 0.15:
                 return []
             effective_min = max(min_score, max_base * 0.75)
         else:
-            effective_min = 0.0  # RRF scores: no floor needed
+            if max_base <= 0.0:
+                return []
+            effective_min = max_base * 0.60
 
         scored: List[Dict[str, Any]] = []
 
@@ -252,7 +238,7 @@ Rules:
         return scored[:max_items]
 
     # ============================================================
-    # INDEX PRODUCT  (async)
+    # INDEX PRODUCT
     # ============================================================
 
     @staticmethod
@@ -280,7 +266,6 @@ Rules:
             text_lines.append(f"Rating: {payload['rating']} stars")
 
         text = "\n".join(text_lines)
-
         embedding = await EmbeddingService.embed(text)
 
         vector = ProductVector(
@@ -302,10 +287,12 @@ Rules:
 
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, cache_service.invalidate_org, payload["org_id"])
-        logger.info("Invalidated RAG cache for org_id=%s", payload["org_id"])
+        logger.info("Invalidated cache for org_id=%s", payload["org_id"])
 
     # ============================================================
-    # SEMANTIC SEARCH  (async — now hybrid-aware)
+    # SEMANTIC SEARCH
+    # Full pipeline: classify → filter extract → hybrid → post-process
+    # → metadata filter → rerank → threshold → top_k
     # ============================================================
 
     @staticmethod
@@ -319,6 +306,15 @@ Rules:
         if not query or not query.strip():
             return []
 
+        # Step 1: Classify
+        classification = classify_query(query)
+        logger.info(
+            "Classifier | query='%s' | intent=%s | type=%s | weights=(v=%.1f, b=%.1f)",
+            query, classification.intent, classification.query_type,
+            classification.vector_weight, classification.bm25_weight,
+        )
+
+        # Step 2: Extract filters
         if filters is None:
             extracted = await SearchService.extract_filters_from_query(query)
             filters = SearchService._build_filters_from_extracted(extracted)
@@ -327,46 +323,52 @@ Rules:
         if not prepared:
             return []
 
-        # Classify query → dynamic weights
-        weights = classify_query(query)
-        logger.info(
-            "Query classifier | query='%s' | type=%s | weights=(v=%.1f, b=%.1f)",
-            query, weights.query_type, weights.vector_weight, weights.bm25_weight,
-        )
-
-        # Generate embedding (always needed — vector search always runs)
+        # Step 3: Hybrid retrieval
         embedding = await EmbeddingService.embed(prepared)
-
-        # Run hybrid search
         raw_results = await VectorStore.hybrid_search(
             db,
             embedding=embedding,
-            query=query,               # original query for BM25 — prepared text breaks FTS
+            query=query,                    # original for BM25
             org_id=org_id,
-            top_k=top_k * 2,           # fetch extra, post_process trims to top_k
-            vector_weight=weights.vector_weight,
-            bm25_weight=weights.bm25_weight,
+            top_k=top_k * 3,               # fetch wide pool for reranker
+            vector_weight=classification.vector_weight,
+            bm25_weight=classification.bm25_weight,
         )
 
-        ranked = SearchService._post_process_results(
+        # Step 4: Post-process + threshold
+        candidates = SearchService._post_process_results(
             query=prepared,
             results=raw_results or [],
             min_score=0.45,
-            max_items=top_k,
+            max_items=top_k * 2,
             is_hybrid=True,
         )
 
+        # Step 5: Metadata filter
         if filters:
-            ranked = SearchService._apply_filters(ranked, filters)
+            candidates = SearchService._apply_filters(candidates, filters)
+
+        if not candidates:
+            return []
+
+        # Step 6: Rerank
+        reranked = await rerank(
+            query=query,
+            candidates=candidates,
+            top_k=top_k,
+            threshold=0.35,
+            intent=classification.intent,
+        )
 
         logger.info(
-            "Semantic search | org=%s | query='%s' | raw=%d | ranked=%d | top_k=%d",
-            org_id, query, len(raw_results or []), len(ranked), top_k,
+            "Semantic search | org=%s | query='%s' | raw=%d | candidates=%d | reranked=%d",
+            org_id, query, len(raw_results or []), len(candidates), len(reranked),
         )
-        return ranked
+        return reranked
 
     # ============================================================
-    # RAG SEARCH  (async, cache integrated, now hybrid-aware)
+    # RAG SEARCH
+    # Full pipeline with cache + reranker
     # ============================================================
 
     @staticmethod
@@ -383,13 +385,22 @@ Rules:
 
         provider = (llm_provider or "gemini").lower()
 
+        # Step 1: Classify
+        classification = classify_query(query)
+        logger.info(
+            "Classifier | query='%s' | intent=%s | type=%s | weights=(v=%.1f, b=%.1f)",
+            query, classification.intent, classification.query_type,
+            classification.vector_weight, classification.bm25_weight,
+        )
+
+        # Step 2: Extract filters
         if filters is None:
             extracted = await SearchService.extract_filters_from_query(query)
             filters = SearchService._build_filters_from_extracted(extracted)
 
         prepared_query = SearchService._prepare_query_text(query)
 
-        # Cache read
+        # Cache check
         loop = asyncio.get_running_loop()
         cached = await loop.run_in_executor(
             None,
@@ -397,42 +408,59 @@ Rules:
                 normalized_query=prepared_query, org_id=org_id, provider=provider
             ),
         )
-
         if cached:
             logger.info("RAG cache HIT | org=%s | provider=%s", org_id, provider)
             return cached
 
         logger.info("RAG cache MISS | org=%s | provider=%s", org_id, provider)
 
-        # Classify query → dynamic weights
-        weights = classify_query(query)
-        logger.info(
-            "Query classifier | query='%s' | type=%s | weights=(v=%.1f, b=%.1f)",
-            query, weights.query_type, weights.vector_weight, weights.bm25_weight,
-        )
-
+        # Step 3: Hybrid retrieval
         embedding = await EmbeddingService.embed(prepared_query)
-
         raw_results = await VectorStore.hybrid_search(
             db,
             embedding=embedding,
-            query=query,               # original query for BM25 — prepared text breaks FTS
+            query=query,                    # original for BM25
             org_id=org_id,
-            top_k=top_k * 2,
-            vector_weight=weights.vector_weight,
-            bm25_weight=weights.bm25_weight,
+            top_k=top_k * 3,               # wide pool for reranker
+            vector_weight=classification.vector_weight,
+            bm25_weight=classification.bm25_weight,
         )
 
-        ranked = SearchService._post_process_results(
+        # Step 4: Post-process + threshold
+        candidates = SearchService._post_process_results(
             query=prepared_query,
             results=raw_results or [],
             min_score=0.50,
-            max_items=top_k,
+            max_items=top_k * 2,
             is_hybrid=True,
         )
 
+        # Step 5: Metadata filter
         if filters:
-            ranked = SearchService._apply_filters(ranked, filters)
+            candidates = SearchService._apply_filters(candidates, filters)
+
+        if not candidates:
+            response = {"answer": "I couldn't find any relevant products for your query.", "sources": []}
+            await loop.run_in_executor(
+                None,
+                lambda: cache_service.set_rag_response(
+                    normalized_query=prepared_query,
+                    response=response,
+                    org_id=org_id,
+                    provider=provider,
+                    ttl=300,
+                ),
+            )
+            return response
+
+        # Step 6: Rerank
+        ranked = await rerank(
+            query=query,
+            candidates=candidates,
+            top_k=top_k,
+            threshold=0.35,
+            intent=classification.intent,
+        )
 
         if not ranked:
             response = {"answer": "I couldn't find any relevant products for your query.", "sources": []}
@@ -448,27 +476,21 @@ Rules:
             )
             return response
 
-        # Build context string
+        # Build LLM context
         context_parts = []
         for item in ranked:
             parts = [f"- {item['name']}"]
-            if item.get("category"):
-                parts.append(f"Category: {item['category']}")
-            if item.get("brand"):
-                parts.append(f"Brand: {item['brand']}")
-            if item.get("price"):
-                parts.append(f"Price: ${item['price']}")
-            if item.get("description"):
-                parts.append(f"Description: {item['description'][:200]}...")
-            if item.get("specifications"):
-                parts.append(f"Specifications: {item['specifications'][:150]}...")
-            if item.get("rating"):
-                parts.append(f"Rating: {item['rating']} stars")
-            parts.append(f"Similarity: {item['similarity_score']:.6f}")
+            if item.get("category"):   parts.append(f"Category: {item['category']}")
+            if item.get("brand"):      parts.append(f"Brand: {item['brand']}")
+            if item.get("price"):      parts.append(f"Price: ${item['price']}")
+            if item.get("description"):parts.append(f"Description: {item['description'][:200]}...")
+            if item.get("specifications"): parts.append(f"Specs: {item['specifications'][:150]}...")
+            if item.get("rating"):     parts.append(f"Rating: {item['rating']} stars")
+            if item.get("rerank_score"): parts.append(f"Relevance: {item['rerank_score']:.2f}")
             context_parts.append(" ".join(parts))
         context = "\n".join(context_parts)
 
-        # Async LLM call
+        # LLM answer
         if provider == "openai":
             answer = await OpenAIClient.generate(query, context)
         else:
@@ -486,29 +508,25 @@ Rules:
             ),
         )
 
+        logger.info(
+            "RAG search | org=%s | query='%s' | raw=%d | candidates=%d | ranked=%d",
+            org_id, query, len(raw_results or []), len(candidates), len(ranked),
+        )
         return response
 
     # ============================================================
-    # UPDATE PRODUCT  (async)
+    # UPDATE / DELETE
     # ============================================================
 
     @staticmethod
     async def update_product(db: AsyncSession, payload: dict) -> None:
-        org_id = payload["org_id"]
+        org_id     = payload["org_id"]
         product_id = payload["product_id"]
-
-        existing = await SearchRepository.get_by_id(db, org_id, product_id)
+        existing   = await SearchRepository.get_by_id(db, org_id, product_id)
         if not existing:
-            raise ProductNotFoundError(
-                f"Product '{product_id}' not found in org '{org_id}'"
-            )
-
+            raise ProductNotFoundError(f"Product '{product_id}' not found in org '{org_id}'")
         await SearchService.index_product(db, payload)
         logger.info("Updated product | org=%s | product_id=%s", org_id, product_id)
-
-    # ============================================================
-    # DELETE PRODUCT  (async)
-    # ============================================================
 
     @staticmethod
     async def delete_product(db: AsyncSession, org_id: str, product_id: str) -> None:
