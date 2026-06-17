@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Optional, Union
 
-from openai import OpenAI
+from openai import OpenAI, RateLimitError as OpenAIRateLimitError, AuthenticationError, APIConnectionError
 
 from app.core.config import settings
 from app.core.exceptions import LLMGenerationError, RateLimitError
@@ -24,6 +24,24 @@ ELECTRONIC_KEYWORDS = {
     "smartwatch", "wearable", "drone", "projector", "amplifier",
     "microphone", "earphone", "earbuds", "powerbank", "power bank",
     "mobile", "display", "graphics card", "motherboard", "ram",
+}
+
+# Max tokens for description/improve generation — intentionally capped below
+# the model's output limit; descriptions longer than ~500 words are rarely
+# needed and keeping this low reduces latency and cost.
+DESCRIPTION_MAX_TOKENS = 2048
+
+# ---------------------------------------------------------------------------
+# Length preset definitions
+# ---------------------------------------------------------------------------
+
+# Maps the user-facing length preset to a (min_words, max_words) tuple.
+# Used by /improve to control output length via both the system prompt and
+# the user prompt so the model gets two consistent signals.
+DESCRIPTION_LENGTH_PRESETS: dict[str, tuple[int, int]] = {
+    "short":  (150, 200),
+    "medium": (300, 350),
+    "long":   (450, 500),  # default — matches legacy behaviour
 }
 
 # ---------------------------------------------------------------------------
@@ -229,12 +247,16 @@ feature_bullets rules:
 Return ONLY the JSON object. Nothing else."""
 
 
-def _build_social_system_prompt(tone: str, language: str, region: str) -> str:
+def _build_social_system_prompt(tone: str, language: str, region: str, target_audience: Optional[str] = None) -> str:
     tone_guidance = {
         "formal":     "Write in a professional, brand-authoritative voice with controlled excitement — suitable for corporate Facebook pages.",
         "casual":     "Write in a friendly, hype-driven conversational voice with energy — suitable for Instagram and Facebook consumer audiences.",
         "persuasive": "Write in a high-energy, benefit-driven voice that creates urgency, excitement, and strong purchase intent.",
     }
+    persona_block = ""
+    instruction = _get_persona_instruction(target_audience)
+    if instruction:
+        persona_block = f"\n\nAUDIENCE TARGETING — STRICTLY FOLLOW:\n{instruction}"
     return (
         f"You are a high-energy social media copywriter specialising in ecommerce product promotions for Facebook and Instagram. "
         f"Write all output in {language.upper()} language, optimised for the {region} market. "
@@ -307,6 +329,11 @@ Return ONLY the JSON object. Nothing else."""
 
 
 def _build_variants_system_prompt(language: str, region: str) -> str:
+    persona_block = ""
+    instruction = _get_persona_instruction(target_audience)
+    if instruction:
+        persona_block = f"\n\nAUDIENCE TARGETING — STRICTLY FOLLOW:\n{instruction}"
+
     return (
         f"You are a world-class social media copywriter specialising in ecommerce product promotions "
         f"for Facebook and Instagram. "
@@ -466,6 +493,154 @@ Return ONLY the JSON object. Nothing else."""
 
 
 # ---------------------------------------------------------------------------
+# Improve description prompt builders
+# ---------------------------------------------------------------------------
+
+def _build_improve_system_prompt(tone: str, language: str, region: str, length: str = "long") -> str:
+    min_w, max_w = DESCRIPTION_LENGTH_PRESETS.get(length, (450, 500))
+    tone_guidance = {
+        "formal":     "Use professional, authoritative language suitable for premium or B2B product pages.",
+        "casual":     "Use friendly, approachable language suitable for everyday consumer products.",
+        "persuasive": "Use benefit-driven, value-focused language that builds confidence and encourages purchase.",
+    }
+    return (
+        f"You are an expert ecommerce copywriter and editor. "
+        f"Your job is to rewrite user-submitted product descriptions into polished, "
+        f"compelling copy — preserving every fact, spec, and claim exactly as provided. "
+        f"Write all output in {language.upper()} language, optimised for the {region} market. "
+        f"Tone: {tone_guidance.get(tone, 'professional and benefit-driven')} "
+        f"STRICT RULE: Do NOT invent, add, or remove any product fact, specification, price, "
+        f"dimension, or claim. Only improve the writing quality, structure, and tone. "
+        f"Target output length is {min_w}–{max_w} words. "
+        f"If your draft is under {min_w} words, expand each paragraph before returning. "
+        f"If your draft exceeds {max_w} words, trim without removing any facts. "
+        f"Return ONLY valid JSON — no markdown, no code fences, no preamble."
+    )
+
+
+def _build_improve_user_prompt(raw_description: str, length: str = "long") -> str:
+    min_w, max_w = DESCRIPTION_LENGTH_PRESETS.get(length, (450, 500))
+
+    # Section structure guidance scales with the target length so the model
+    # doesn't try to fit 6 sections into a 150-word output.
+    if length == "short":
+        structure_note = (
+            "Use 1–2 sections with brief, focused headers. "
+            "Each section is a single tight paragraph. "
+            "Keep every sentence essential — no filler."
+        )
+    elif length == "medium":
+        structure_note = (
+            "Use 2–3 sections with clear headers. "
+            "Each section has 1 paragraph of 3–4 sentences. "
+            "Cover the key specs and one benefit per section."
+        )
+    else:  # long
+        structure_note = (
+            "Use 4–6 sections with dynamic headers suited to the product type. "
+            "Each section has 1–2 paragraphs of benefit-first storytelling content. "
+            "Last section must be a closing 'Buy' paragraph mentioning availability and price."
+        )
+
+    return f"""Rewrite the following product description with improved writing quality and tone.
+
+RAW DESCRIPTION:
+{raw_description}
+
+Return a single JSON object with exactly this key:
+{{
+  "improved_description": "<rewritten description — follow ALL rules below>"
+}}
+
+Rules:
+1. PRESERVE FACTS: Every spec, price, dimension, model number, and claim must remain unchanged.
+2. IMPROVE QUALITY: Fix grammar, flow, sentence structure, and word choice.
+3. APPLY TONE: Rewrite to match the tone defined in your instructions.
+4. LENGTH: Output must be {min_w}–{max_w} words. Count carefully. Do not go under {min_w} words.
+5. LANGUAGE: Write in the same language as the input. If Bengali and English are mixed, respond in English.
+6. NO ADDITIONS: Do not add features, benefits, or claims not present in the original.
+7. FORMAT: Use structured section headers exactly like this:
+
+   - Line 1: Full product name as a standalone title (no label, just the name)
+   - {structure_note}
+   - Bold every section header (e.g. **48MP Fusion Camera System**)
+   - Blank line after each header
+   - Blank line between sections
+   - No bullet points anywhere
+   - Separate every section with \\n\\n
+
+Return ONLY the JSON object. Nothing else."""
+
+# ---------------------------------------------------------------------------
+# Audience persona definitions
+# ---------------------------------------------------------------------------
+
+AUDIENCE_PERSONA_INSTRUCTIONS: dict[str, str] = {
+    "students": (
+        "Target audience: university and high school students. "
+        "Emphasise: affordability and value for money, portability for carrying between classes, "
+        "performance for studying, assignments, and light multitasking (Zoom, docs, browsing). "
+        "Tone: relatable, peer-to-peer, budget-conscious. "
+        "Avoid: corporate language, luxury positioning, enterprise features."
+    ),
+    "gamers": (
+        "Target audience: PC and mobile gamers aged 16–30. "
+        "Emphasise: processing power, GPU/display specs, frame rates, cooling, low-latency peripherals. "
+        "Use gaming vocabulary naturally (fps, lag, smooth gameplay, sessions). "
+        "Tone: hyped, technical, community-driven. "
+        "Avoid: office/productivity framing, boring professional language."
+    ),
+    "professionals": (
+        "Target audience: working professionals — engineers, managers, consultants. "
+        "Emphasise: productivity, reliability, build quality, compatibility with professional tools. "
+        "Tone: polished, confident, ROI-aware. "
+        "Avoid: casual slang, gamer language, budget-focused framing."
+    ),
+    "parents": (
+        "Target audience: parents shopping for family use or for their children. "
+        "Emphasise: durability, safety, ease of use, parental controls where relevant, value for family. "
+        "Tone: warm, reassuring, practical. "
+        "Avoid: overly technical jargon, hype language, gaming/nightlife associations."
+    ),
+    "business_owners": (
+        "Target audience: small to medium business owners and entrepreneurs. "
+        "Emphasise: ROI, operational efficiency, reliability, scalability, time-saving. "
+        "Tone: direct, results-oriented, professional. "
+        "Avoid: consumer-lifestyle framing, entertainment features, budget positioning."
+    ),
+    "content_creators": (
+        "Target audience: YouTubers, streamers, photographers, video editors, social media influencers. "
+        "Emphasise: camera quality, display colour accuracy, processing speed for editing, "
+        "storage for large files, portability for on-location shoots. "
+        "Tone: creative, aspirational, tool-focused. "
+        "Avoid: boring office framing, purely technical spec-listing."
+    ),
+    "travelers": (
+        "Target audience: frequent travellers, digital nomads, backpackers. "
+        "Emphasise: lightweight design, battery life, durability, compact form factor, "
+        "compatibility with travel accessories, offline capability. "
+        "Tone: adventurous, freedom-oriented, practical. "
+        "Avoid: desk-setup framing, heavy enterprise features, stationary use cases."
+    ),
+}
+
+
+def _get_persona_instruction(target_audience: Optional[str]) -> str:
+    """Return the persona instruction string, or empty string if no persona set."""
+    if not target_audience:
+        return ""
+    key = target_audience.lower().strip().replace(" ", "_")
+    instruction = AUDIENCE_PERSONA_INSTRUCTIONS.get(key)
+    if not instruction:
+        # Unknown persona — pass it through generically rather than silently dropping it
+        return (
+            f"Target audience: {target_audience}. "
+            f"Tailor all language, benefit framing, and examples specifically to this audience."
+        )
+    return instruction
+
+
+# ---------------------------------------------------------------------------
 # Public service
 # ---------------------------------------------------------------------------
 
@@ -493,6 +668,7 @@ class ContentGenerationService:
 
     @staticmethod
     def generate_social_post(
+        
         name: str,
         category: Optional[str],
         brand: Optional[str],
@@ -503,6 +679,7 @@ class ContentGenerationService:
         tone: str,
         query: Optional[str] = None,
         shop_address: Optional[str] = None,
+        target_audience: Optional[str] = None,
     ) -> dict:
         """Generate a social media post with hashtags via OpenAI."""
         product_summary = _build_product_summary(name, category, brand, specifications, price)
@@ -532,6 +709,7 @@ class ContentGenerationService:
         language: str,
         shop_address: Optional[str] = None,
         count: int = 4,
+        target_audience: Optional[str] = None,
     ) -> list[dict]:
         count  = max(1, min(count, len(VARIANT_STYLES)))
         styles = VARIANT_STYLES[:count]
@@ -559,6 +737,7 @@ class ContentGenerationService:
             label     = str(v.get("label", "")).strip()
 
             if post_body:
+                # Strip any LLM-generated CTA so we can inject deterministically.
                 lines     = post_body.rstrip().split("\n")
                 last_line = lines[-1].strip().lower()
                 cta_triggers = ("visit our outlet", "order online", "fastest delivery")
@@ -566,12 +745,13 @@ class ContentGenerationService:
                     post_body = "\n".join(lines[:-1]).rstrip()
 
                 if price:
+                    # Remove any existing price line before re-injecting.
                     price_trigger = str(price).lower()
                     filtered = [
                         ln for ln in post_body.split("\n")
-                        if price_trigger not in ln.lower() or "price:" not in ln.lower()
+                        if not ("price:" in ln.lower() and price_trigger in ln.lower())
                     ]
-                    post_body = "\n".join(filtered).rstrip()
+                    post_body  = "\n".join(filtered).rstrip()
                     price_line = f"{name} — Price: {price}/-"
                     cta_line   = (
                         f"Visit our outlet at {shop_address} or order online for the fastest delivery."
@@ -605,6 +785,7 @@ class ContentGenerationService:
         region: str,
         language: str,
         tone: str,
+        target_audience: Optional[str] = None,
     ) -> dict:
         """Generate a social media ad post with price and shop address via OpenAI."""
         product_summary = _build_product_summary(name, category, brand, specifications, price)
@@ -637,6 +818,30 @@ class ContentGenerationService:
             "hashtags":  [str(h).strip().lstrip("#") for h in result["hashtags"] if h],
         }
 
+    @staticmethod
+    def improve_description(
+        raw_description: str,
+        tone: str,
+        language: str,
+        region: str,
+        length: str = "long",
+    ) -> dict:
+        """
+        Improve a user-written product description via OpenAI.
+
+        length preset controls output word count:
+          - short:  150–200 words  (1–2 sections)
+          - medium: 300–350 words  (2–3 sections)
+          - long:   450–500 words  (4–6 sections, default)
+        """
+        system_prompt = _build_improve_system_prompt(tone, language, region, length)
+        user_prompt   = _build_improve_user_prompt(raw_description, length)
+
+        raw = ContentGenerationService._call_openai(
+            system_prompt, user_prompt, "user_description", "ImproveDesc",
+        )
+        return ContentGenerationService._parse_and_validate(raw, {"improved_description"})
+
     # ── Shared OpenAI call ─────────────────────────────────────────────────
 
     @staticmethod
@@ -647,10 +852,10 @@ class ContentGenerationService:
         log_tag: str,
         max_tokens_override: Optional[int] = None,
     ) -> str:
-        if max_tokens_override:
-            max_tokens = max_tokens_override
-        else:
-            max_tokens = 1500 if "mini" in settings.OPENAI_MODEL.lower() else 2048
+        # DESCRIPTION_MAX_TOKENS is intentionally capped below the model's
+        # output limit (~500 words ≈ 700 tokens; 2048 gives comfortable headroom
+        # for long presets without ballooning cost on every request).
+        max_tokens = max_tokens_override or DESCRIPTION_MAX_TOKENS
 
         try:
             client   = _get_client()
@@ -680,18 +885,14 @@ class ContentGenerationService:
 
         except LLMGenerationError:
             raise
+        except OpenAIRateLimitError as e:
+            logger.warning("[%s] Rate limit hit: %s", log_tag, e)
+            raise RateLimitError(f"OpenAI rate limit exceeded: {e}")
+        except AuthenticationError as e:
+            raise LLMGenerationError(f"OpenAI authentication error: {e}")
+        except APIConnectionError as e:
+            raise LLMGenerationError(f"OpenAI network error: {e}")
         except Exception as e:
-            err_type = type(e).__name__
-            err_msg  = str(e).lower()
-
-            if "rate limit" in err_msg or "quota" in err_msg or "429" in err_msg or "RateLimitError" in err_type:
-                logger.warning("[%s] Rate limit hit: %s", log_tag, e)
-                raise RateLimitError(f"OpenAI rate limit exceeded: {e}")
-            if "auth" in err_msg or "api key" in err_msg or "401" in err_msg:
-                raise LLMGenerationError(f"OpenAI authentication error: {e}")
-            if "connection" in err_msg or "timeout" in err_msg:
-                raise LLMGenerationError(f"OpenAI network error: {e}")
-
             raise LLMGenerationError(f"Generation failed: {e}")
 
     # ── Shared parse & validate ────────────────────────────────────────────

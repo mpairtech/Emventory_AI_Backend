@@ -1,4 +1,14 @@
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+import logging
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field, field_validator
+
 from app.api.v1.routers.search import verify_api_key
 from app.api.v1.schemas import (
     ContentGenerationRequest,
@@ -11,17 +21,12 @@ from app.api.v1.schemas import (
 from app.modules.content.service import ContentGenerationService
 from app.core.exceptions import LLMGenerationError, RateLimitError
 from app.core.cache.cache_service import cache_service
-from pydantic import BaseModel, Field
-import hashlib
-import json
-import logging
-import uuid
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/content", tags=["AI Content"])
 
-CONTENT_CACHE_TTL_SECONDS = 3600  # 1 hour — applies to /generate, /social, /ad, and /variants
+CONTENT_CACHE_TTL_SECONDS = 3600  # 1 hour — applies to /generate, /social, /ad, /variants, and /improve
 
 
 # ── Ad request/response schemas ────────────────────────────────────────────
@@ -41,6 +46,10 @@ class AdGenerationRequest(BaseModel):
     region: str = "BD"
     language: str = "English"
     tone: str = "enthusiastic"
+    target_audience: str | None = Field(
+        default=None,
+        description="Audience persona e.g. 'students', 'gamers', 'professionals'",
+    )
 
 
 class AdContent(BaseModel):
@@ -89,6 +98,10 @@ class VariantsRequest(BaseModel):
     region: str = "BD"
     language: str = "english"
     count: int = Field(default=4, ge=1, le=6, description="Number of variants to generate (1–6)")
+    target_audience: str | None = Field(
+        default=None,
+        description="Audience persona e.g. 'students', 'gamers', 'professionals'",
+    )
 
 
 class VariantItem(BaseModel):
@@ -108,7 +121,63 @@ class VariantsResponse(BaseModel):
     provider: str
 
 
-# ── Cache key builder ──────────────────────────────────────────────────────
+# ── Improve description request/response schemas ───────────────────────────
+
+class ImproveDescriptionRequest(BaseModel):
+    raw_description: str = Field(
+        ...,
+        min_length=10,
+        description="User-written product description to improve",
+    )
+    tone: str = Field(
+        default="formal",
+        description="One of: formal, casual, persuasive",
+    )
+    language: str = "english"
+    region: str = "BD"
+    length: str = Field(
+        default="long",
+        description=(
+            "Output length preset: "
+            "short (150–200 words), "
+            "medium (300–350 words), "
+            "long (450–500 words, default)"
+        ),
+    )
+
+    @field_validator("tone")
+    @classmethod
+    def validate_tone(cls, v: str) -> str:
+        allowed = {"formal", "casual", "persuasive"}
+        if v.lower() not in allowed:
+            raise ValueError(f"tone must be one of: {', '.join(sorted(allowed))}")
+        return v.lower()
+
+    @field_validator("length")
+    @classmethod
+    def validate_length(cls, v: str) -> str:
+        allowed = {"short", "medium", "long"}
+        if v.lower() not in allowed:
+            raise ValueError(f"length must be one of: {', '.join(sorted(allowed))}")
+        return v.lower()
+
+
+class ImprovedDescriptionContent(BaseModel):
+    content: str
+    word_count: int
+    char_count: int
+
+
+class ImproveDescriptionResponse(BaseModel):
+    tone: str
+    language: str
+    region: str
+    length: str
+    description: ImprovedDescriptionContent
+    provider: str
+
+
+# ── Cache key builders ─────────────────────────────────────────────────────
 
 def _build_cache_key(request: ContentGenerationRequest | SocialPostRequest, namespace: str) -> str:
     product = request.product_data
@@ -125,7 +194,7 @@ def _build_cache_key(request: ContentGenerationRequest | SocialPostRequest, name
             "category":       product.category,
             "brand":          product.brand,
             "specifications": sorted_specs,
-            "price":          product.price,
+            "price":          getattr(product, "price", None),
             "query":          request.query,
             "region":         request.region,
             "language":       request.language,
@@ -188,6 +257,27 @@ def _build_variants_cache_key(request: VariantsRequest) -> str:
             "region":         request.region,
             "language":       request.language,
             "count":          request.count,
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _build_improve_cache_key(request: ImproveDescriptionRequest) -> str:
+    """
+    Deterministic cache key for /improve.
+    Keyed on raw_description + tone + language + region + length.
+    length is included so short/medium/long requests never share a cache entry.
+    """
+    payload = json.dumps(
+        {
+            "namespace":       "improve",
+            "raw_description": request.raw_description,
+            "tone":            request.tone,
+            "language":        request.language,
+            "region":          request.region,
+            "length":          request.length,
         },
         sort_keys=True,
         ensure_ascii=False,
@@ -263,7 +353,8 @@ async def generate_content(
     cache_key  = _build_cache_key(request, namespace="generate")
 
     async def _generate():
-        return ContentGenerationService.generate(
+        return await asyncio.to_thread(
+            ContentGenerationService.generate,
             name=product.name,
             category=product.category,
             brand=product.brand,
@@ -319,7 +410,8 @@ async def generate_social_post(
     cache_key  = _build_cache_key(request, namespace="social")
 
     async def _generate():
-        return ContentGenerationService.generate_social_post(
+        return await asyncio.to_thread(
+            ContentGenerationService.generate_social_post,
             name=product.name,
             category=product.category,
             brand=product.brand,
@@ -397,16 +489,16 @@ async def generate_variants(
     single OpenAI call.
 
     Each variant uses a different writing style:
-      1. Hype Drop       — launch-announcement energy
-      2. Storytelling    — pain-point → solution narrative
+      1. Hype Drop         — launch-announcement energy
+      2. Storytelling      — pain-point → solution narrative
       3. Feature Spotlight — one hero spec, everything supports it
-      4. Value Deal      — price-to-performance, FOMO-driven
-      5. Lifestyle Fit   — daily-use scenarios, aspirational
-      6. Minimalist      — short, punchy, no fluff
+      4. Value Deal        — price-to-performance, FOMO-driven
+      5. Lifestyle Fit     — daily-use scenarios, aspirational
+      6. Minimalist        — short, punchy, no fluff
 
     Price and shop_address (when provided) are guaranteed to appear in every
-    variant's closing line — applied post-generation so cache hits are also
-    correctly injected.
+    variant's closing line — applied post-generation in the service layer so
+    cache hits are also correctly injected.
     """
     request_id = str(uuid.uuid4())
     product    = request.product_data
@@ -419,12 +511,12 @@ async def generate_variants(
 
     async def _generate():
         specs = product.specifications
-        # If specs are dicts (key/value pairs from the product form), flatten to strings.
         flat_specs = (
             [f"{s['key']}: {s['value']}" if isinstance(s, dict) else str(s) for s in specs]
             if specs else []
         )
-        return ContentGenerationService.generate_social_variants(
+        return await asyncio.to_thread(
+            ContentGenerationService.generate_social_variants,
             name=product.name,
             category=product.category,
             brand=product.brand,
@@ -488,7 +580,8 @@ async def generate_ad(
     )
 
     async def _generate():
-        return ContentGenerationService.generate_ad(
+        return await asyncio.to_thread(
+            ContentGenerationService.generate_ad,
             name=product.name,
             category=product.category,
             brand=product.brand,
@@ -542,3 +635,70 @@ async def generate_ad(
     response.post.post_body  = final_body
     response.post.char_count = len(final_body)
     return response
+
+
+# ── Improve description endpoint ───────────────────────────────────────────
+
+@router.post(
+    "/improve",
+    response_model=ImproveDescriptionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Improve a user-written product description with tone and length adjustment",
+)
+async def improve_description(
+    request: ImproveDescriptionRequest,
+    _auth: None = Depends(verify_api_key),
+):
+    """
+    Accepts a raw product description typed by the user and rewrites it into
+    polished, tone-adjusted copy (formal / casual / persuasive).
+
+    Length preset controls output word count:
+      - short:  150–200 words  (1–2 sections)
+      - medium: 300–350 words  (2–3 sections)
+      - long:   450–500 words  (4–6 sections, default)
+
+    All product facts, specs, prices, and claims are preserved exactly.
+    """
+    request_id = str(uuid.uuid4())
+    cache_key  = _build_improve_cache_key(request)
+
+    logger.info(
+        "[ImproveDesc][%s] tone=%s language=%s length=%s chars=%d",
+        request_id, request.tone, request.language, request.length, len(request.raw_description),
+    )
+
+    async def _generate():
+        return await asyncio.to_thread(
+            ContentGenerationService.improve_description,
+            raw_description=request.raw_description,
+            tone=request.tone,
+            language=request.language,
+            region=request.region,
+            length=request.length,
+        )
+
+    def _build_response(result: dict) -> ImproveDescriptionResponse:
+        desc = result["improved_description"]
+        return ImproveDescriptionResponse(
+            tone=request.tone,
+            language=request.language,
+            region=request.region,
+            length=request.length,
+            description=ImprovedDescriptionContent(
+                content=desc,
+                word_count=len(desc.strip().split()),
+                char_count=len(desc),
+            ),
+            provider="openai",
+        )
+
+    return await _execute_with_cache(
+        cache_key=cache_key,
+        generate_fn=_generate,
+        build_response_fn=_build_response,
+        response_cls=ImproveDescriptionResponse,
+        ttl=CONTENT_CACHE_TTL_SECONDS,
+        log_prefix="ImproveDesc",
+        request_id=request_id,
+    )
