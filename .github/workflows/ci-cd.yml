@@ -268,24 +268,19 @@ jobs:
           REPO="${{ env.REGISTRY }}/${{ steps.lower.outputs.repo }}/${{ env.IMAGE_NAME }}"
           echo "image=${REPO}:stage" >> "$GITHUB_OUTPUT"
 
-      - name: Write SSH key + known_hosts
-        env:
-          STAGE_DEPLOY_HOST: ${{ secrets.STAGE_DEPLOY_HOST }}
-          STAGE_DEPLOY_SSH_KEY: ${{ secrets.STAGE_DEPLOY_SSH_KEY }}
-        run: |
-          set -euo pipefail
-          mkdir -m 700 -p ~/.ssh
-          # Strip CR so keys pasted from Windows do not break OpenSSH
-          printf '%s' "${STAGE_DEPLOY_SSH_KEY}" | tr -d '\r' > ~/.ssh/id_ed25519
-          printf '\n' >> ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${STAGE_DEPLOY_HOST}" >> ~/.ssh/known_hosts
-
       - name: Checkout (deploy helper)
         uses: actions/checkout@v4
         with:
           persist-credentials: false
           fetch-depth: 1
+
+      - name: Write SSH key + known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.STAGE_DEPLOY_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.STAGE_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          bash scripts/github_actions_ssh_setup.sh
 
       - name: Deploy over SSH (staging)
         env:
@@ -368,23 +363,19 @@ jobs:
             echo "image=${REPO}:main" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Write SSH key + known_hosts
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-        run: |
-          set -euo pipefail
-          mkdir -m 700 -p ~/.ssh
-          printf '%s' "${DEPLOY_SSH_KEY}" | tr -d '\r' > ~/.ssh/id_ed25519
-          printf '\n' >> ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
-
       - name: Checkout (deploy helper)
         uses: actions/checkout@v4
         with:
           persist-credentials: false
           fetch-depth: 1
+
+      - name: Write SSH key + known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          bash scripts/github_actions_ssh_setup.sh
 
       - name: Deploy over SSH (production)
         env:
