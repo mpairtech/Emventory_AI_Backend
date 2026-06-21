@@ -8,7 +8,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 def _get_client() -> AsyncOpenAI:
     return AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
