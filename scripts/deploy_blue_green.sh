@@ -22,13 +22,29 @@ if [[ ! -f "${ENV_FILE}" ]]; then
 fi
 
 # Basic env validation (fail fast on missing critical vars)
-required_vars=(API_SECRET DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD GEMINI_API_KEY)
+required_vars=(API_SECRET DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD)
 for v in "${required_vars[@]}"; do
   if ! grep -Eq "^${v}=" "${ENV_FILE}"; then
     echo "ERROR: ${ENV_FILE} missing ${v}=..." >&2
     exit 1
   fi
 done
+
+provider="$(grep -E '^ACTIVE_PROVIDER=' "${ENV_FILE}" | tail -1 | cut -d= -f2- | tr -d '\r\n' || true)"
+provider="${provider:-openai}"
+provider="${provider,,}"
+case "${provider}" in
+  gemini)
+    llm_var="GEMINI_API_KEY"
+    ;;
+  openai|*)
+    llm_var="OPENAI_API_KEY"
+    ;;
+esac
+if ! grep -Eq "^${llm_var}=" "${ENV_FILE}"; then
+  echo "ERROR: ${ENV_FILE} missing ${llm_var}=... (required when ACTIVE_PROVIDER=${provider})" >&2
+  exit 1
+fi
 
 echo "Validating compose file..."
 IMAGE="${IMAGE}" ENV_FILE="${ENV_FILE}" docker compose -f "${COMPOSE_FILE}" config >/dev/null
