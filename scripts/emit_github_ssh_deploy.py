@@ -6,13 +6,49 @@ Reads from the environment:
   IMAGE — full image ref to deploy
   GHCR_USER, GHCR_TOKEN — registry login
 
+Optional (upserted into server .env before deploy when set):
+  GEMINI_API_KEY, OPENAI_API_KEY, API_SECRET
+
 All values are shell-quoted for safe use with arbitrary PAT/path characters.
 """
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import sys
+
+# Keys synced from GitHub Actions secrets into the server .env on each deploy.
+ENV_PATCH_KEYS = ("GEMINI_API_KEY", "OPENAI_API_KEY", "API_SECRET")
+
+
+def env_patch_lines() -> list[str]:
+    patches = {k: os.environ[k] for k in ENV_PATCH_KEYS if os.environ.get(k)}
+    if not patches:
+        return []
+    return [
+        "echo 'Updating .env keys from CI secrets (values not printed)...'",
+        "python3 - <<'PY'",
+        "import json, pathlib, re",
+        f"patches = json.loads({json.dumps(json.dumps(patches))})",
+        'path = pathlib.Path(".env")',
+        "rows = path.read_text(encoding='utf-8').splitlines() if path.exists() else []",
+        "out, seen = [], set()",
+        "for line in rows:",
+        "    m = re.match(r'^([A-Z_][A-Z0-9_]*)=', line)",
+        "    if m and m.group(1) in patches:",
+        "        k = m.group(1)",
+        "        out.append(f'{k}={patches[k]}')",
+        "        seen.add(k)",
+        "    else:",
+        "        out.append(line)",
+        "for k, v in patches.items():",
+        "    if k not in seen:",
+        "        out.append(f'{k}={v}')",
+        "path.write_text('\\n'.join(out) + ('\\n' if out else ''), encoding='utf-8')",
+        "print('Patched:', ', '.join(sorted(patches)))",
+        "PY",
+    ]
 
 
 def main() -> None:
@@ -43,6 +79,7 @@ def main() -> None:
         "test -f docker-compose.prod.yml || remote_fail \"missing docker-compose.prod.yml - copy it from the repo into the deploy directory on the server\"",
         "test -f .env || remote_fail \"missing .env in deploy directory\"",
         "test -x scripts/deploy_blue_green.sh || remote_fail \"missing or non-executable scripts/deploy_blue_green.sh - clone/copy repo scripts into the deploy directory\"",
+        *env_patch_lines(),
         "{ " + login + "; } || remote_fail \"docker login failed - check GHCR_USER / GHCR_TOKEN (PAT needs read:packages)\"",
         "{ " + deploy + "; } || remote_fail \"deploy_blue_green.sh exited with error - see lines above on the server\"",
     ]

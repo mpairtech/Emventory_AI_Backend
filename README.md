@@ -78,6 +78,12 @@ Set these in the repo **Settings → Secrets and variables → Actions**:
 - **`STAGE_DEPLOY_SSH_KEY`**: private key for that user (ed25519 recommended)
 - **`STAGE_DEPLOY_PATH`**: path on the staging host containing `docker-compose.prod.yml` and `.env`
 
+**Recommended staging environment secrets** (upserted into server `.env` on each deploy):
+
+- **`GEMINI_API_KEY`**: required when `ACTIVE_PROVIDER=gemini` in server `.env`
+- **`OPENAI_API_KEY`**: required when `ACTIVE_PROVIDER=openai`
+- **`API_SECRET`**: optional; only set if you want CI to overwrite the server value
+
 **Optional repo variable (Actions → Variables):**
 
 - **`STAGING_DEPLOY_ACTIVE`**: leave unset or set to `true` while you use staging. Set to **`false`** when you have torn down the staging host or path so pushes to `stage` still build/push the image but **do not** run the SSH deploy job (avoids failed deploys after you delete the test server).

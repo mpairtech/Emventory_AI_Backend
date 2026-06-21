@@ -37,8 +37,8 @@ env:
   PYTHON_VERSION: "3.11"
   REGISTRY: ghcr.io
   IMAGE_NAME: emventory-ai-backend
-  # OpenSSH: fail closed on host key mismatch after first use in same job (TOFU once per run).
-  SSH_COMMON_OPTS: "-o BatchMode=yes -o ConnectTimeout=30 -o ConnectionAttempts=3 -o StrictHostKeyChecking=accept-new"
+  # OpenSSH: TOFU once per run. Extra HostKeyAlgorithms for older sshd (GitHub runners use modern OpenSSH).
+  SSH_COMMON_OPTS: "-o BatchMode=yes -o ConnectTimeout=30 -o ConnectionAttempts=3 -o StrictHostKeyChecking=accept-new -o HostKeyAlgorithms=+ssh-ed25519,ecdsa-sha2-nistp256,rsa-sha2-512,rsa-sha2-256,ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-ed25519,rsa-sha2-512,rsa-sha2-256,ssh-rsa"
 
 jobs:
   python-smoke:
@@ -282,6 +282,20 @@ jobs:
           set -euo pipefail
           bash scripts/github_actions_ssh_setup.sh
 
+      - name: Sync deploy files to staging
+        env:
+          STAGE_DEPLOY_HOST: ${{ secrets.STAGE_DEPLOY_HOST }}
+          STAGE_DEPLOY_USER: ${{ secrets.STAGE_DEPLOY_USER }}
+          STAGE_DEPLOY_PATH: ${{ secrets.STAGE_DEPLOY_PATH }}
+          SSH_COMMON_OPTS: ${{ env.SSH_COMMON_OPTS }}
+        run: |
+          set -euo pipefail
+          REMOTE="${STAGE_DEPLOY_USER}@${STAGE_DEPLOY_HOST}"
+          ssh ${SSH_COMMON_OPTS} "${REMOTE}" "mkdir -p ${STAGE_DEPLOY_PATH}/scripts"
+          scp ${SSH_COMMON_OPTS} docker-compose.prod.yml "${REMOTE}:${STAGE_DEPLOY_PATH}/"
+          scp ${SSH_COMMON_OPTS} scripts/deploy_blue_green.sh "${REMOTE}:${STAGE_DEPLOY_PATH}/scripts/"
+          ssh ${SSH_COMMON_OPTS} "${REMOTE}" "chmod +x ${STAGE_DEPLOY_PATH}/scripts/deploy_blue_green.sh"
+
       - name: Deploy over SSH (staging)
         env:
           STAGE_DEPLOY_HOST: ${{ secrets.STAGE_DEPLOY_HOST }}
@@ -289,12 +303,18 @@ jobs:
           REMOTE_DEPLOY_PATH: ${{ secrets.STAGE_DEPLOY_PATH }}
           GHCR_USER: ${{ secrets.GHCR_USER }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          API_SECRET: ${{ secrets.API_SECRET }}
           IMAGE: ${{ steps.img.outputs.image }}
           SSH_COMMON_OPTS: ${{ env.SSH_COMMON_OPTS }}
         run: |
           set -euo pipefail
           python3 scripts/emit_github_ssh_deploy.py > "${RUNNER_TEMP}/remote_deploy.sh"
-          ssh ${SSH_COMMON_OPTS} "${STAGE_DEPLOY_USER}@${STAGE_DEPLOY_HOST}" bash -se < "${RUNNER_TEMP}/remote_deploy.sh"
+          if ! ssh ${SSH_COMMON_OPTS} "${STAGE_DEPLOY_USER}@${STAGE_DEPLOY_HOST}" bash -se < "${RUNNER_TEMP}/remote_deploy.sh"; then
+            echo "::error::Remote deploy failed. If you see 'missing GEMINI_API_KEY', add GEMINI_API_KEY to GitHub staging secrets (Settings → Secrets → staging environment) or set it in the server .env."
+            exit 1
+          fi
 
   deploy-production:
     name: Deploy to Production (manual)
@@ -377,6 +397,20 @@ jobs:
           set -euo pipefail
           bash scripts/github_actions_ssh_setup.sh
 
+      - name: Sync deploy files to production
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          SSH_COMMON_OPTS: ${{ env.SSH_COMMON_OPTS }}
+        run: |
+          set -euo pipefail
+          REMOTE="${DEPLOY_USER}@${DEPLOY_HOST}"
+          ssh ${SSH_COMMON_OPTS} "${REMOTE}" "mkdir -p ${DEPLOY_PATH}/scripts"
+          scp ${SSH_COMMON_OPTS} docker-compose.prod.yml "${REMOTE}:${DEPLOY_PATH}/"
+          scp ${SSH_COMMON_OPTS} scripts/deploy_blue_green.sh "${REMOTE}:${DEPLOY_PATH}/scripts/"
+          ssh ${SSH_COMMON_OPTS} "${REMOTE}" "chmod +x ${DEPLOY_PATH}/scripts/deploy_blue_green.sh"
+
       - name: Deploy over SSH (production)
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -384,9 +418,15 @@ jobs:
           REMOTE_DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           GHCR_USER: ${{ secrets.GHCR_USER }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          API_SECRET: ${{ secrets.API_SECRET }}
           IMAGE: ${{ steps.img.outputs.image }}
           SSH_COMMON_OPTS: ${{ env.SSH_COMMON_OPTS }}
         run: |
           set -euo pipefail
           python3 scripts/emit_github_ssh_deploy.py > "${RUNNER_TEMP}/remote_deploy.sh"
-          ssh ${SSH_COMMON_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" bash -se < "${RUNNER_TEMP}/remote_deploy.sh"
+          if ! ssh ${SSH_COMMON_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" bash -se < "${RUNNER_TEMP}/remote_deploy.sh"; then
+            echo "::error::Remote deploy failed. Check logs above; ensure GEMINI_API_KEY / OPENAI_API_KEY match ACTIVE_PROVIDER in server .env."
+            exit 1
+          fi

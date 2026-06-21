@@ -43,3 +43,6 @@ test_gemini_rag.py
 # IDE
 .vscode/
 .idea/
+
+# Deploy SSH keys (never commit)
+.deploy-keys/
