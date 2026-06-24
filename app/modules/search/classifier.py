@@ -29,6 +29,7 @@ class Intent(str, Enum):
     FEATURE_SEARCH = "feature_search"
     BROWSE         = "browse"
     GENERAL        = "general"
+    OFF_TOPIC      = "off_topic"
 
 
 class _Weights(NamedTuple):
@@ -93,7 +94,7 @@ User query: "{query}"
 Return ONLY a JSON object with these fields:
 
 {{
-  "primary_intent": "<one of: exact_lookup, recommendation, comparison, price_filter, availability, feature_search, browse, general>",
+  "primary_intent": "<one of: exact_lookup, recommendation, comparison, price_filter, availability, feature_search, browse, general,off_topic>",
   "secondary_intents": ["<additional intents that also apply, can be empty list>"],
   "vector_weight": <float 0.0-1.0>,
   "bm25_weight": <float 0.0-1.0, must sum to 1.0 with vector_weight>,
@@ -144,6 +145,9 @@ INTENT RULES:
 - feature_search: specific features like wireless, ANC, waterproof, battery life
 - browse: show all, list, display all, dekhao (Bengali: show)
 - general: unclear or mixed intent
+- off_topic: greetings, chitchat, questions unrelated to products or shopping
+  Examples: "hi", "how are you", "what is AI", "tell me a joke", "who are you"
+  Use off_topic when the query has NO connection to product search, browsing, or e-commerce
 
 FILTER EXTRACTION RULES:
 - brand: only if a specific brand is explicitly mentioned ("Sony", "Nike", "GoPro")
@@ -306,12 +310,27 @@ _FB_COMPARE_RE   = re.compile(r"\b(vs|versus|compare|difference|better|between)\
 _FB_PRICE_RE     = re.compile(r"\b(under|below|above|over|between|price|cost|taka|tk|\$|budget|cheap|affordable)\b", re.IGNORECASE)
 _FB_BROWSE_RE    = re.compile(r"^(show|list|display|all|browse|see all|find all|give me all)\b", re.IGNORECASE)
 _FB_FEATURE_RE   = re.compile(r"\b(with|without|has|support|feature|waterproof|wireless|bluetooth|usb|hdmi|anc|noise.cancell?ing)\b", re.IGNORECASE)
+_FB_OFFTOPIC_RE = re.compile(
+    r"^(hi|hello|hey|howdy|greetings|good (morning|afternoon|evening|night)|"
+    r"how are you|what('s| is) up|who are you|what are you|tell me a joke|"
+    r"thanks|thank you|bye|goodbye|ok|okay|yes|no|sure|nice|cool|great|lol)\b.*$",
+    re.IGNORECASE,
+)
 
 
 def _fallback_classify(query: str) -> ClassificationResult:
     q       = query.strip()
     tokens  = q.split()
     n       = len(tokens)
+    if _FB_OFFTOPIC_RE.match(q) or (n <= 3 and not has_code and not has_price and not has_feature and intent == Intent.GENERAL and confidence <= 0.30):
+        return ClassificationResult(
+            vector_weight=0.5, bm25_weight=0.5,
+            query_type=QueryType.BALANCED,
+            intent=Intent.OFF_TOPIC,
+            intent_confidence=0.95,
+            secondary_intents=[],
+            bm25_query=query,
+        )
     has_code     = bool(_FB_CODE_RE.search(q))
     is_question  = bool(_FB_QUESTION_RE.match(q))
     has_recommend= bool(_FB_RECOMMEND_RE.search(q))

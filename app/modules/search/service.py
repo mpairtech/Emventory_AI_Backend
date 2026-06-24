@@ -135,7 +135,7 @@ class SearchService:
         else:
             if max_base <= 0.0:
                 return []
-            effective_min = max_base * 0.60
+            effective_min = max_base * 0.30
 
         scored: List[Dict[str, Any]] = []
 

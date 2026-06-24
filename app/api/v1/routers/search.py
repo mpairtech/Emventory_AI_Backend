@@ -327,6 +327,15 @@ async def rag_search(
     _: None = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.modules.search.classifier import classify_and_extract, Intent
+    _pre_check = await classify_and_extract(request.query)
+    if _pre_check.intent == Intent.OFF_TOPIC:
+        logger.info("Off-topic query rejected | query=%r", request.query)
+        return RAGResponse(
+            answer="I can only help with product search.",
+            sources=[],
+        )
+    
     """
     RAG search with automatic fallback.
     - Uses the requested provider, or ACTIVE_PROVIDER if not specified.
