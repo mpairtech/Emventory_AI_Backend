@@ -13,7 +13,7 @@ Fixes applied (v2):
   - _GateVerdict enum replaces bool | None return type
   - _GIBBERISH_RE logic error fixed (no longer blocks "TV", "I", "AI")
   - Prompt injection sanitization on user query
-  - TTL cache on LLM gate results (avoids redundant API calls)
+  - TTL cache on LLM gate results via stdlib (zero new dependencies)
   - Brand list moved to a frozenset config (maintainable)
   - Constants grouped at top of file
   - Query length cap before LLM call
@@ -23,9 +23,10 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from enum import Enum
+from typing import Dict, Tuple
 
-from cachetools import TTLCache
 from openai import AsyncOpenAI
 
 from app.core.config import settings
@@ -41,6 +42,42 @@ _LLM_TIMEOUT       = 5.0    # seconds
 _LLM_MAX_TOKENS    = 5      # only "true" or "false" needed
 _CACHE_MAX_SIZE    = 1024   # max unique queries cached
 _CACHE_TTL_SECONDS = 3600   # 1 hour — gate result unlikely to change per query
+
+# ─── Stdlib TTL cache (no external dependency) ────────────────────────────────
+
+class _TTLCache:
+    """
+    Simple TTL cache backed by a plain dict.
+    Evicts expired entries on every read/write.
+    Not thread-safe for multi-process deployments — use Redis for that.
+    Sufficient for single-process async FastAPI workers.
+    """
+
+    def __init__(self, maxsize: int, ttl: float) -> None:
+        self._maxsize = maxsize
+        self._ttl     = ttl
+        self._store:  Dict[str, Tuple[bool, float]] = {}  # key → (value, expires_at)
+
+    def get(self, key: str) -> bool | None:
+        entry = self._store.get(key)
+        if entry is None:
+            return None
+        value, expires_at = entry
+        if time.monotonic() > expires_at:
+            del self._store[key]
+            return None
+        return value
+
+    def set(self, key: str, value: bool) -> None:
+        # Evict oldest entry if at capacity
+        if len(self._store) >= self._maxsize and key not in self._store:
+            oldest_key = next(iter(self._store))
+            del self._store[oldest_key]
+        self._store[key] = (value, time.monotonic() + self._ttl)
+
+    def __len__(self) -> int:
+        return len(self._store)
+
 
 # ─── Brand / product keyword config (extend here, not in regex) ───────────────
 
@@ -90,8 +127,8 @@ _CHITCHAT_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Fixed: no longer blocks "TV", "I", "A1", "LG" etc.
-# Only blocks: purely non-letter strings, or single repeated char 5+ times
+# Fixed: no longer blocks "TV", "LG", "A1" etc.
+# Only blocks: purely non-letter/digit strings, or single char repeated 5+ times
 _GIBBERISH_RE = re.compile(
     r"^[^a-zA-Z\u0980-\u09FF\d]+$"   # no letters or digits at all (e.g. "!!!###")
     r"|^(.)\1{4,}$",                  # single char repeated 5+ times (e.g. "aaaaa")
@@ -100,7 +137,7 @@ _GIBBERISH_RE = re.compile(
 
 
 def _build_product_signal_pattern() -> re.Pattern[str]:
-    """Build product signal regex from config sets — single source of truth."""
+    """Build product signal regex from config frozensets — single source of truth."""
     all_terms = _PRODUCT_KEYWORDS | _KNOWN_BRANDS
     escaped   = sorted(re.escape(t) for t in all_terms)
     pattern   = r"\b(" + "|".join(escaped) + r")\b"
@@ -171,11 +208,8 @@ No explanation. No punctuation. Just: true or false"""
 # Initialized once at module level — thread-safe, no lazy singleton needed
 _llm_gate_client: AsyncOpenAI = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
-# TTL cache: same query won't hit the LLM twice within 1 hour
-_gate_cache: TTLCache[str, bool] = TTLCache(
-    maxsize=_CACHE_MAX_SIZE,
-    ttl=_CACHE_TTL_SECONDS,
-)
+# Stdlib TTL cache — same query won't hit the LLM twice within 1 hour
+_gate_cache = _TTLCache(maxsize=_CACHE_MAX_SIZE, ttl=_CACHE_TTL_SECONDS)
 
 
 def _sanitize_query(query: str) -> str:
@@ -199,13 +233,12 @@ async def _llm_based_check(query: str) -> bool:
     """
     cache_key = query.strip().lower()
 
-    # Check cache first
     cached = _gate_cache.get(cache_key)
     if cached is not None:
         logger.debug("Intent gate [LLM cache HIT] | query=%r | result=%s", query, cached)
         return cached
 
-    sanitized = _sanitize_query(query)
+    sanitized   = _sanitize_query(query)
     user_prompt = f'User query: "{sanitized}"'
 
     try:
@@ -222,8 +255,7 @@ async def _llm_based_check(query: str) -> bool:
         raw    = response.choices[0].message.content.strip().lower()
         result = raw.startswith("true")
 
-        # Store in cache
-        _gate_cache[cache_key] = result
+        _gate_cache.set(cache_key, result)
 
         logger.info(
             "Intent gate [LLM] | query=%r | result=%s | raw=%r",
@@ -237,7 +269,7 @@ async def _llm_based_check(query: str) -> bool:
             query,
             exc_info=True,
         )
-        return True  # fail open: don't block legitimate queries on LLM error
+        return True  # fail open: never block legitimate queries on LLM error
 
 
 # ─── Public API ───────────────────────────────────────────────────────────────
@@ -247,8 +279,8 @@ async def is_relevant_query(query: str) -> bool:
     Two-layer relevance gate. Called before classify_and_extract().
 
     Layer 1 — Rule-based (zero cost, <1ms):
-      - Gibberish / empty          → BLOCK immediately
-      - Greetings / chitchat       → BLOCK immediately
+      - Gibberish / empty           → BLOCK immediately
+      - Greetings / chitchat        → BLOCK immediately
       - Known product keyword/brand → ALLOW immediately
 
     Layer 2 — LLM gate (only for UNSURE queries):
