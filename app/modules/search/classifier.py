@@ -145,9 +145,15 @@ INTENT RULES:
 - feature_search: specific features like wireless, ANC, waterproof, battery life
 - browse: show all, list, display all, dekhao (Bengali: show)
 - general: unclear or mixed intent
-- off_topic: greetings, chitchat, questions unrelated to products or shopping
-  Examples: "hi", "how are you", "what is AI", "tell me a joke", "who are you"
-  Use off_topic when the query has NO connection to product search, browsing, or e-commerce
+- off_topic: ANY query that is not related to searching, finding, buying, or comparing products.
+  This includes:
+  - Greetings and chitchat in ANY language: "hi", "kemon acho", "ki obostha", "hello bhai"
+  - General questions not about products: "what is AI", "ki kora jai", "help me", "who are you"
+  - Personal questions: "apni ke", "tumi ki", "what can you do"
+  - Nonsense or gibberish: "asdf", "123abc"
+  - Anything that does not involve a product category, brand, feature, or price
+  Rule: If you cannot imagine a product being the answer to this query, use off_topic.
+  When in doubt, use off_topic over general.
 
 FILTER EXTRACTION RULES:
 - brand: only if a specific brand is explicitly mentioned ("Sony", "Nike", "GoPro")
@@ -319,18 +325,10 @@ _FB_OFFTOPIC_RE = re.compile(
 
 
 def _fallback_classify(query: str) -> ClassificationResult:
-    q       = query.strip()
-    tokens  = q.split()
-    n       = len(tokens)
-    if _FB_OFFTOPIC_RE.match(q) or (n <= 3 and not has_code and not has_price and not has_feature and intent == Intent.GENERAL and confidence <= 0.30):
-        return ClassificationResult(
-            vector_weight=0.5, bm25_weight=0.5,
-            query_type=QueryType.BALANCED,
-            intent=Intent.OFF_TOPIC,
-            intent_confidence=0.95,
-            secondary_intents=[],
-            bm25_query=query,
-        )
+    q      = query.strip()
+    tokens = q.split()
+    n      = len(tokens)
+
     has_code     = bool(_FB_CODE_RE.search(q))
     is_question  = bool(_FB_QUESTION_RE.match(q))
     has_recommend= bool(_FB_RECOMMEND_RE.search(q))
@@ -339,6 +337,22 @@ def _fallback_classify(query: str) -> ClassificationResult:
     is_browse    = bool(_FB_BROWSE_RE.match(q))
     has_feature  = bool(_FB_FEATURE_RE.search(q))
     has_digits   = bool(re.search(r"\d", q))
+
+    # ── OFF-TOPIC GATE ─────────────────────────────────────────
+    has_product_signal = any([
+        has_code, has_recommend, has_compare,
+        has_price, is_browse, has_feature,
+    ])
+    if not has_product_signal and n <= 6:
+        return ClassificationResult(
+            vector_weight=0.5, bm25_weight=0.5,
+            query_type=QueryType.BALANCED,
+            intent=Intent.OFF_TOPIC,
+            intent_confidence=0.90,
+            secondary_intents=[],
+            bm25_query=query,
+        )
+    # ───────────────────────────────────────────────────────────
 
     if has_compare:
         intent, confidence = Intent.COMPARISON, 0.75
@@ -358,10 +372,10 @@ def _fallback_classify(query: str) -> ClassificationResult:
     score = 0
     if n <= 2:   score += 2
     elif n <= 4: score += 1
-    if has_code:   score += 2
-    if has_digits: score += 1
+    if has_code:    score += 2
+    if has_digits:  score += 1
     if is_question: score -= 2
-    if n >= 8:   score -= 1
+    if n >= 8:      score -= 1
 
     if score >= 2:
         weights = WEIGHTS_EXACT if intent == Intent.EXACT_LOOKUP else WEIGHTS_KEYWORD
