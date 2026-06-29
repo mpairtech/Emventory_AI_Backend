@@ -8,8 +8,10 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# System deps (psycopg2 needs libpq)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# System deps (psycopg2 needs libpq); upgrade first for Debian security fixes (e.g. libssh2)
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends \
     libpq5 \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -20,7 +22,9 @@ RUN useradd --create-home --shell /usr/sbin/nologin appuser
 COPY requirements-prod.txt ./
 
 # Build deps only for pip install, then removed (keeps final image small-ish)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
     && pip install -r requirements-prod.txt \
