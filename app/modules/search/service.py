@@ -16,8 +16,8 @@ from app.core.vector.pgvector import VectorStore
 from app.db.models.vector import ProductVector
 
 from app.modules.search.classifier import classify_and_extract, ClassificationResult
-
 from app.modules.search.embeddings import EmbeddingService
+from app.modules.search.intent_gate import is_relevant_query, OFF_TOPIC_RESPONSE  # ← NEW
 from app.modules.search.reranker import rerank
 from app.modules.search.repository import SearchRepository
 
@@ -228,8 +228,15 @@ class SearchService:
         top_k: int = 10,
         filters=None,
     ) -> List[Dict[str, Any]]:
+        # ── guard: empty query ──────────────────────────────────────────────
         if not query or not query.strip():
             return []
+
+        # ── guard: intent gate ──────────────────────────────────────────────
+        if not await is_relevant_query(query):
+            logger.info("Intent gate BLOCKED | semantic_search | query=%r", query)
+            return []
+        # ────────────────────────────────────────────────────────────────────
 
         classification: ClassificationResult = await classify_and_extract(query)
 
@@ -280,11 +287,11 @@ class SearchService:
             return []
 
         reranked = await rerank(
-            query     = query,
+            query      = query,
             candidates = candidates,
-            top_k     = top_k,
-            threshold = 0.35,
-            intent    = classification.intent,
+            top_k      = top_k,
+            threshold  = 0.50,
+            intent     = classification.intent,
         )
 
         logger.info(
@@ -302,8 +309,18 @@ class SearchService:
         top_k: int = 5,
         filters=None,
     ) -> dict:
+        # ── guard: empty query ──────────────────────────────────────────────
         if not query or not query.strip():
             return {"answer": "Please provide a valid query.", "sources": []}
+
+        # ── guard: intent gate ──────────────────────────────────────────────
+        if not await is_relevant_query(query):
+            logger.info("Intent gate BLOCKED | rag_search | query=%r", query)
+            return {
+                "answer": OFF_TOPIC_RESPONSE,
+                "sources": [],
+            }
+        # ────────────────────────────────────────────────────────────────────
 
         provider = (llm_provider or "gemini").lower()
 
@@ -381,11 +398,11 @@ class SearchService:
             return response
 
         ranked = await rerank(
-            query     = query,
+            query      = query,
             candidates = candidates,
-            top_k     = top_k,
-            threshold = 0.35,
-            intent    = classification.intent,
+            top_k      = top_k,
+            threshold  = 0.50,
+            intent     = classification.intent,
         )
 
         if not ranked:
@@ -408,13 +425,13 @@ class SearchService:
         context_parts = []
         for item in ranked:
             parts = [f"- {item['name']}"]
-            if item.get("category"):    parts.append(f"Category: {item['category']}")
-            if item.get("brand"):       parts.append(f"Brand: {item['brand']}")
-            if item.get("price"):       parts.append(f"Price: ${item['price']}")
-            if item.get("description"): parts.append(f"Description: {item['description'][:200]}...")
+            if item.get("category"):       parts.append(f"Category: {item['category']}")
+            if item.get("brand"):          parts.append(f"Brand: {item['brand']}")
+            if item.get("price"):          parts.append(f"Price: ${item['price']}")
+            if item.get("description"):    parts.append(f"Description: {item['description'][:200]}...")
             if item.get("specifications"): parts.append(f"Specs: {item['specifications'][:150]}...")
-            if item.get("rating"):      parts.append(f"Rating: {item['rating']} stars")
-            if item.get("rerank_score"): parts.append(f"Relevance: {item['rerank_score']:.2f}")
+            if item.get("rating"):         parts.append(f"Rating: {item['rating']} stars")
+            if item.get("rerank_score"):   parts.append(f"Relevance: {item['rerank_score']:.2f}")
             context_parts.append(" ".join(parts))
         context = "\n".join(context_parts)
 

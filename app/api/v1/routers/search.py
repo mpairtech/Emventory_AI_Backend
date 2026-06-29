@@ -27,64 +27,64 @@ import logging
 import math
 import hmac
 import hashlib
- 
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
- 
+
 router = APIRouter(prefix="/search", tags=["AI Search"])
- 
- 
+
+
 def get_active_provider() -> str:
     provider = settings.ACTIVE_PROVIDER
     logger.info("Using active provider: %s (from ACTIVE_PROVIDER env)", provider)
     return provider
- 
- 
+
+
 def _generate_key(user_input: str) -> str:
     return hmac.new(
         settings.API_SECRET.encode("utf-8"),
         user_input.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
- 
- 
+
+
 # ---------------------------------------------------------------------------
-# Auth dependencies — sync is fine here (pure CPU, sub-microsecond)
+# Auth dependencies
 # ---------------------------------------------------------------------------
- 
+
 def verify_api_key(request: Request):
     key_input = (request.headers.get("X-Key-Input") or "").strip()
     raw_key_header = request.headers.get("X-API-Key")
     auth_header = request.headers.get("Authorization", "")
     key = (raw_key_header or auth_header.replace("Bearer ", "")).strip()
- 
+
     if not key_input:
         logger.warning("API key verification failed: missing X-Key-Input header")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing X-Key-Input header.",
         )
- 
+
     expected_key = _generate_key(key_input)
     if not key or not hmac.compare_digest(key, expected_key):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing API key.",
         )
- 
- 
+
+
 def verify_generate_key(request: Request):
     key_input = request.headers.get("X-Key-Input", "").strip()
     key = request.headers.get("X-API-Key", "").strip()
     expected = _generate_key("generate")
     if key_input != "generate" or not key or not hmac.compare_digest(key, expected):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized.")
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Utility helpers
 # ---------------------------------------------------------------------------
- 
+
 def _safe_float(v):
     if v is None:
         return None
@@ -95,8 +95,8 @@ def _safe_float(v):
         return f
     except (TypeError, ValueError):
         return None
- 
- 
+
+
 def _safe_int(v):
     if v is None:
         return None
@@ -107,28 +107,27 @@ def _safe_int(v):
         return int(f)
     except (TypeError, ValueError):
         return None
- 
- 
+
+
 # ---------------------------------------------------------------------------
-# generate-key  (sync is fine — pure HMAC, no I/O)
+# /generate-key
 # ---------------------------------------------------------------------------
- 
+
 @router.post("/generate-key", summary="Generate API key from user input")
 def generate_key(
     body: GenerateKeyRequest,
     _: None = Depends(verify_generate_key),
 ):
     return {"input": body.input, "token": _generate_key(body.input)}
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # /indexed
 # ---------------------------------------------------------------------------
- 
+
 async def _list_indexed_products(
     org_id: str | None, limit: int, db: AsyncSession
 ) -> JSONResponse:
-    """Async helper — awaits the DB query so the event loop is not blocked."""
     try:
         q = select(
             ProductVector.org_id,
@@ -146,10 +145,10 @@ async def _list_indexed_products(
         if org_id:
             q = q.where(ProductVector.org_id == org_id)
         q = q.order_by(ProductVector.org_id, ProductVector.product_id)
- 
+
         result = await db.execute(q)
         rows = result.fetchall()
- 
+
         items = [
             {
                 "org_id":         r[0],
@@ -176,8 +175,8 @@ async def _list_indexed_products(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list indexed products.",
         )
- 
- 
+
+
 @router.post("/indexed", summary="List indexed products", response_model=None, status_code=200)
 async def list_indexed(
     body: ListIndexedRequest,
@@ -185,12 +184,12 @@ async def list_indexed(
     db: AsyncSession = Depends(get_db),
 ):
     return await _list_indexed_products(org_id=body.org_id, limit=body.limit, db=db)
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # /index  POST
 # ---------------------------------------------------------------------------
- 
+
 @router.post("/index", status_code=status.HTTP_201_CREATED)
 async def index_product(
     request: ProductIndexRequest,
@@ -217,12 +216,12 @@ async def index_product(
     except Exception as e:
         logger.error("Unexpected error in index_product: %s", e, exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred.")
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # /index  PUT
 # ---------------------------------------------------------------------------
- 
+
 @router.put("/index", status_code=status.HTTP_200_OK)
 async def update_product(
     request: ProductIndexRequest,
@@ -249,12 +248,12 @@ async def update_product(
     except Exception as e:
         logger.error("Unexpected error in update_product: %s", e, exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred.")
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # /index  DELETE
 # ---------------------------------------------------------------------------
- 
+
 @router.delete("/index", status_code=status.HTTP_200_OK)
 async def delete_product(
     org_id:     str = Query(..., description="Organization ID"),
@@ -277,12 +276,12 @@ async def delete_product(
     except Exception as e:
         logger.error("Unexpected error in delete_product: %s", e, exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred.")
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # /semantic
 # ---------------------------------------------------------------------------
- 
+
 @router.post("/semantic")
 async def semantic_search(
     request: SearchRequest,
@@ -311,12 +310,14 @@ async def semantic_search(
     except Exception as e:
         logger.error("Unexpected error in semantic_search: %s", e, exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred.")
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # /rag
+# ── Off-topic check is handled inside SearchService.rag_search() via the
+#    intent gate (intent_gate.py). No pre-check needed here.
 # ---------------------------------------------------------------------------
- 
+
 @router.post("/rag", response_model=RAGResponse)
 async def rag_search(
     request: SearchRequest,
@@ -327,20 +328,12 @@ async def rag_search(
     _: None = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.modules.search.classifier import classify_and_extract, Intent
-    _pre_check = await classify_and_extract(request.query)
-    if _pre_check.intent == Intent.OFF_TOPIC:
-        logger.info("Off-topic query rejected | query=%r", request.query)
-        return RAGResponse(
-            answer="I can only help with product search.",
-            sources=[],
-        )
-    
     """
     RAG search with automatic fallback.
     - Uses the requested provider, or ACTIVE_PROVIDER if not specified.
     - On LLMGenerationError, retries with the other provider.
-    - RateLimitError returns 429 immediately (no fallback — both providers share quota risk).
+    - Off-topic queries are caught by the intent gate inside SearchService.
+    - RateLimitError returns 429 immediately (no fallback).
     """
     if provider:
         provider = provider.lower().strip()
@@ -352,14 +345,14 @@ async def rag_search(
         selected_provider = provider
     else:
         selected_provider = get_active_provider()
- 
+
     fallback_provider = "openai" if selected_provider == "gemini" else "gemini"
- 
+
     logger.info(
         "RAG search — query: '%s', org_id: %s, provider: %s",
         request.query, request.org_id, selected_provider,
     )
- 
+
     try:
         result = await SearchService.rag_search(
             db,
@@ -371,11 +364,11 @@ async def rag_search(
         )
         logger.info("RAG search completed using %s", selected_provider)
         return result
- 
+
     except RateLimitError as e:
         logger.warning("Rate limit hit on provider '%s': %s", selected_provider, e)
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=f"Rate limit reached: {e}")
- 
+
     except LLMGenerationError as e:
         logger.warning("LLM error on '%s': %s. Trying fallback '%s'", selected_provider, e, fallback_provider)
         try:
@@ -398,7 +391,7 @@ async def rag_search(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="AI generation failed on all available providers.",
             )
- 
+
     except EmbeddingGenerationError as e:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Embedding service error: {e}")
     except VectorSearchError as e:
@@ -410,30 +403,28 @@ async def rag_search(
     except Exception as e:
         logger.error("Unexpected error in rag_search: %s", e, exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred.")
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # /debug
 # ---------------------------------------------------------------------------
- 
+
 @router.post("/debug")
 async def debug_search(
     request: SearchRequest,
     _: None = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    # FIX (WARN-5): settings.DEBUG_MODE was missing from Settings — add it to config.py.
     if not settings.DEBUG_MODE:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found.")
- 
+
     try:
-        query = request.query
+        query  = request.query
         org_id = request.org_id
- 
-        # Async embedding call
+
         query_embedding = await EmbeddingService.embed(query)
-        embedding_str = "[" + ",".join(map(str, query_embedding)) + "]"
- 
+        embedding_str   = "[" + ",".join(map(str, query_embedding)) + "]"
+
         sql = text("""
             SELECT
                 org_id,
@@ -455,21 +446,20 @@ async def debug_search(
             ORDER BY embedding <=> CAST(:q AS vector)
             LIMIT 10
         """)
- 
-        # Async DB call
+
         result = await db.execute(sql, {"q": embedding_str, "org_id": org_id})
-        rows = result.mappings().fetchall()
- 
-        query_words = set(query.lower().split())
+        rows   = result.mappings().fetchall()
+
+        query_words  = set(query.lower().split())
         debug_results = []
         for row in rows:
             product_text = " ".join(filter(None, [
                 row["name"], row["category"], row["brand"],
                 row["description"], row["specifications"],
             ])).lower()
-            product_words = set(product_text.split())
+            product_words  = set(product_text.split())
             matching_words = query_words.intersection(product_words)
- 
+
             debug_results.append({
                 "org_id":              row["org_id"],
                 "product_id":          row["product_id"],
@@ -489,9 +479,9 @@ async def debug_search(
                 "total_query_words":   len(query_words),
                 "total_product_words": len(product_words),
             })
- 
+
         return {"query": query, "query_words": list(query_words), "results": debug_results}
- 
+
     except RateLimitError as e:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
     except EmbeddingGenerationError as e:
