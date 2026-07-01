@@ -319,6 +319,7 @@ class SearchService:
             return {
                 "answer": OFF_TOPIC_RESPONSE,
                 "sources": [],
+                "off_topic": True,
             }
         # ────────────────────────────────────────────────────────────────────
 

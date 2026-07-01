@@ -111,6 +111,7 @@ class ProductResponse(BaseModel):
 class RAGResponse(BaseModel):
     answer: str
     sources: list[ProductResponse]
+    off_topic: bool =False
 
 
 class ErrorResponse(BaseModel):
