@@ -76,6 +76,7 @@ class SearchRequest(BaseModel):
     org_id: Optional[str] = Field(None, max_length=255, description="If set, search only this org's products (MySQL org_id)")
     top_k: int = Field(5, ge=1, le=50, description="Number of results to return (default: 5)")
     filters: Optional[SearchFilters] = Field(None, description="Optional post-retrieval filters")
+    language: Literal["en", "bn"] = Field("en", description="Response language: 'en' (English) or 'bn' (Bangla)")
 
     @field_validator('query')
     @classmethod

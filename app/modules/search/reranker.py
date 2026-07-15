@@ -4,10 +4,13 @@ LLM Reranker using gpt-4o-mini.
 Scores each retrieved product against the query for true relevance,
 eliminating false positives that slip through hybrid retrieval.
 
-Design:
-- Batch all candidates in ONE API call (not one call per product)
-- Returns scored + filtered results above threshold
-- Falls back to original order if reranker fails
+Changes from previous version:
+  - Added _resolve_price_ceiling() — derives budget ceiling from candidate
+    price distribution. Works for any product category, no hardcoded values.
+  - rerank() now accepts price_max, price_min, budget_qualifier params.
+  - Intent note is enriched with resolved budget context before LLM call.
+  - Post-LLM Python price penalty applied for products over budget ceiling.
+  - _build_prompt() accepts intent_note override.
 """
 
 from __future__ import annotations
@@ -16,7 +19,7 @@ import copy
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, Optional
 
 from openai import AsyncOpenAI
 
@@ -30,6 +33,9 @@ _DESC_LIMIT = 150
 _SPEC_LIMIT = 100
 _SCORE_BUFFER_PER_CANDIDATE = 10
 _SCORE_BUFFER_BASE = 50
+
+# Maximum score deduction for over-budget products (0.0 – 1.0)
+_MAX_PRICE_PENALTY = 0.5
 
 _INTENT_NOTES: dict[str, str] = {
     "exact_lookup":   "Exact model/brand match is most important.",
@@ -90,14 +96,19 @@ def _build_product_summary(index: int, product: dict[str, Any]) -> str:
     return " | ".join(parts)
 
 
-def _build_prompt(query: str, candidates: list[dict[str, Any]], intent: str) -> str:
-    intent_note = _INTENT_NOTES.get(intent, _INTENT_NOTES["general"])
+def _build_prompt(
+    query: str,
+    candidates: list[dict[str, Any]],
+    intent: str,
+    intent_note: str | None = None,   # ← NEW: accepts override from rerank()
+) -> str:
+    note = intent_note or _INTENT_NOTES.get(intent, _INTENT_NOTES["general"])
     products_text = "\n".join(
         _build_product_summary(i, p) for i, p in enumerate(candidates)
     )
     return _RERANK_PROMPT_TEMPLATE.format(
         query=query,
-        intent_note=intent_note,
+        intent_note=note,
         products_text=products_text,
     )
 
@@ -117,9 +128,105 @@ def _score_to_float(score: Any, index: int) -> float:
     try:
         return float(score)
     except (TypeError, ValueError):
-        logger.warning("Reranker returned non-numeric score at index %d: %r — defaulting to 0.0", index, score)
+        logger.warning(
+            "Reranker returned non-numeric score at index %d: %r — defaulting to 0.0",
+            index, score,
+        )
         return 0.0
 
+
+# ── NEW: price ceiling resolution ─────────────────────────────────────────────
+
+def _resolve_price_ceiling(
+    candidates: list[dict[str, Any]],
+    price_max: Optional[float],
+    budget_qualifier: Optional[str],
+) -> Optional[float]:
+    """
+    Resolve effective price ceiling from explicit price or budget qualifier.
+
+    Explicit price_max always wins — it is a hard user constraint.
+
+    budget_qualifier derives a soft ceiling from the candidate price
+    distribution so the threshold self-adjusts to any product category:
+      "tight" → bottom third  of candidate prices  (p33)
+      "mid"   → bottom two-thirds of candidate prices (p66)
+      "high"  → no ceiling applied
+
+    Returns None when no ceiling can be determined.
+    """
+    # Hard constraint wins
+    if price_max is not None:
+        return price_max
+
+    if budget_qualifier not in ("tight", "mid"):
+        return None
+
+    prices = sorted(
+        float(p["price"])
+        for p in candidates
+        if p.get("price") and float(p.get("price") or 0) > 0
+    )
+
+    if not prices:
+        return None
+
+    n = len(prices)
+
+    if budget_qualifier == "tight":
+        idx = max(0, n // 3 - 1)
+        return prices[idx]
+
+    if budget_qualifier == "mid":
+        idx = max(0, (2 * n) // 3 - 1)
+        return prices[idx]
+
+    return None
+
+
+# ── NEW: budget-aware intent note builder ─────────────────────────────────────
+
+def _build_budget_intent_note(
+    base_intent: str,
+    effective_ceiling: Optional[float],
+    budget_qualifier: Optional[str],
+    price_min: Optional[float],
+) -> str:
+    """
+    Compose intent note for the reranker prompt, injecting budget context
+    so the LLM scores products with price awareness.
+    """
+    note = _INTENT_NOTES.get(base_intent, _INTENT_NOTES["general"])
+
+    if effective_ceiling is not None:
+        note += (
+            f" User budget ceiling is {effective_ceiling:.0f}. "
+            f"Products priced above {effective_ceiling:.0f} should score LOWER. "
+            f"Products at or below {effective_ceiling:.0f} should score HIGHER."
+        )
+
+    if budget_qualifier == "tight":
+        note += (
+            " User explicitly wants the most affordable option. "
+            "Prefer lower-priced products that still meet the need. "
+            "Do NOT score an expensive product highly just because it has more features."
+        )
+    elif budget_qualifier == "high":
+        note += (
+            " User wants the best quality regardless of price. "
+            "Prefer premium, feature-rich products even if expensive."
+        )
+
+    if price_min is not None:
+        note += (
+            f" Minimum quality threshold: {price_min:.0f}. "
+            f"Products below this price may not meet user expectations."
+        )
+
+    return note
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def rerank(
     query: str,
@@ -127,21 +234,26 @@ async def rerank(
     top_k: int = 5,
     threshold: float = 0.4,
     intent: str = "general",
+    price_max: Optional[float] = None,          # ← NEW
+    price_min: Optional[float] = None,          # ← NEW
+    budget_qualifier: Optional[str] = None,     # ← NEW
 ) -> list[dict[str, Any]]:
     """
     Rerank candidates using gpt-4o-mini relevance scoring.
 
     Args:
-        query: Original user query.
-        candidates: Products from hybrid retrieval.
-        top_k: Max results to return after reranking.
-        threshold: Minimum relevance score (0.0–1.0) to keep a result.
-        intent: Query intent from classifier (adjusts scoring prompt).
+        query:            Original user query.
+        candidates:       Products from hybrid retrieval.
+        top_k:            Max results to return after reranking.
+        threshold:        Minimum relevance score (0.0–1.0) to keep a result.
+        intent:           Query intent from classifier.
+        price_max:        Explicit price ceiling from classifier (wins over qualifier).
+        price_min:        Explicit price floor from classifier.
+        budget_qualifier: Qualitative budget signal: "tight" | "mid" | "high" | None.
 
     Returns:
         Reranked and filtered list, best first.
         Falls back to candidates[:top_k] if the LLM call fails.
-        The fallback does not apply threshold filtering.
     """
     if not candidates:
         return []
@@ -151,7 +263,24 @@ async def rerank(
         result["rerank_score"] = None
         return [result]
 
-    prompt = _build_prompt(query, candidates, intent)
+    # ── Resolve price ceiling (pure Python, zero LLM cost) ───────────────
+    effective_ceiling = _resolve_price_ceiling(candidates, price_max, budget_qualifier)
+
+    if effective_ceiling is not None:
+        logger.info(
+            "Budget ceiling resolved | qualifier=%s | explicit_max=%s | ceiling=%.2f",
+            budget_qualifier, price_max, effective_ceiling,
+        )
+
+    # ── Build intent note with budget context injected ────────────────────
+    intent_note = _build_budget_intent_note(
+        base_intent       = intent,
+        effective_ceiling = effective_ceiling,
+        budget_qualifier  = budget_qualifier,
+        price_min         = price_min,
+    )
+
+    prompt = _build_prompt(query, candidates, intent, intent_note=intent_note)
     max_tokens = len(candidates) * _SCORE_BUFFER_PER_CANDIDATE + _SCORE_BUFFER_BASE
 
     t0 = time.monotonic()
@@ -168,7 +297,8 @@ async def rerank(
 
         usage = response.usage
         logger.info(
-            "Reranker API | latency=%.3fs | prompt_tokens=%d | completion_tokens=%d | total_tokens=%d",
+            "Reranker API | latency=%.3fs | prompt_tokens=%d | "
+            "completion_tokens=%d | total_tokens=%d",
             elapsed,
             usage.prompt_tokens if usage else -1,
             usage.completion_tokens if usage else -1,
@@ -180,15 +310,36 @@ async def rerank(
 
         if scores is None or len(scores) != len(candidates):
             logger.warning(
-                "Reranker returned unexpected format (scores=%r, expected_len=%d) — using original order",
-                scores,
-                len(candidates),
+                "Reranker returned unexpected format "
+                "(scores=%r, expected_len=%d) — using original order",
+                scores, len(candidates),
             )
             return candidates[:top_k]
 
+        # ── Score products + apply Python price penalty ───────────────────
         scored: list[tuple[float, dict[str, Any]]] = []
+
         for i, (product, score) in enumerate(zip(candidates, scores)):
             s = _score_to_float(score, i)
+
+            # Apply price penalty on top of LLM score (pure Python, zero cost)
+            if effective_ceiling is not None:
+                try:
+                    product_price = float(product.get("price") or 0)
+                    if product_price > 0 and product_price > effective_ceiling:
+                        overage_ratio = (product_price - effective_ceiling) / effective_ceiling
+                        penalty = min(0.3 * overage_ratio, _MAX_PRICE_PENALTY)
+                        original_s = s
+                        s = max(0.0, s - penalty)
+                        logger.debug(
+                            "Price penalty | product=%s | price=%.0f | "
+                            "ceiling=%.0f | penalty=%.2f | score: %.2f→%.2f",
+                            product.get("name"), product_price,
+                            effective_ceiling, penalty, original_s, s,
+                        )
+                except (TypeError, ValueError):
+                    pass
+
             if s >= threshold:
                 enriched = copy.deepcopy(product)
                 enriched["rerank_score"] = round(s, 3)
@@ -198,9 +349,12 @@ async def rerank(
         results = [p for _, p in scored[:top_k]]
 
         logger.info(
-            "Reranker | query=%r | intent=%s | input=%d | passed=%d | top_k=%d",
+            "Reranker | query=%r | intent=%s | budget_qualifier=%s | "
+            "ceiling=%s | input=%d | passed=%d | top_k=%d",
             query,
             intent,
+            budget_qualifier,
+            f"{effective_ceiling:.0f}" if effective_ceiling else "none",
             len(candidates),
             len(results),
             top_k,

@@ -361,6 +361,7 @@ async def rag_search(
             llm_provider=selected_provider,
             top_k=request.top_k,
             filters=request.filters,
+            language=request.language,
         )
         logger.info("RAG search completed using %s", selected_provider)
         return result

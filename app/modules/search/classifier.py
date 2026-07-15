@@ -74,6 +74,12 @@ class ClassificationResult:
     is_size_query:      bool = False
     is_brand_query:     bool = False
 
+    # ── NEW: qualitative budget signal ────────────────────────────────────
+    # "tight" | "mid" | "high" | None
+    # Extracted even when no numeric price is present.
+    # Explicit price_max/price_min always takes priority over this field.
+    budget_qualifier:   Optional[str]   = None
+
     def to_query_classification(self) -> QueryClassification:
         return QueryClassification(
             vector_weight=self.vector_weight,
@@ -94,7 +100,7 @@ User query: "{query}"
 Return ONLY a JSON object with these fields:
 
 {{
-  "primary_intent": "<one of: exact_lookup, recommendation, comparison, price_filter, availability, feature_search, browse, general,off_topic>",
+  "primary_intent": "<one of: exact_lookup, recommendation, comparison, price_filter, availability, feature_search, browse, general, off_topic>",
   "secondary_intents": ["<additional intents that also apply, can be empty list>"],
   "vector_weight": <float 0.0-1.0>,
   "bm25_weight": <float 0.0-1.0, must sum to 1.0 with vector_weight>,
@@ -107,7 +113,8 @@ Return ONLY a JSON object with these fields:
   "status": "<ACTIVE | DISCONTINUED | DRAFT or null>",
   "is_banglish": <true | false>,
   "is_size_query": <true | false>,
-  "is_brand_query": <true | false>
+  "is_brand_query": <true | false>,
+  "budget_qualifier": "<tight | mid | high | null>"
 }}
 
 WEIGHT RULES:
@@ -145,20 +152,15 @@ INTENT RULES:
 - feature_search: specific features like wireless, ANC, waterproof, battery life
 - browse: show all, list, display all, dekhao (Bengali: show)
 - general: unclear or mixed intent
-- off_topic: ANY query that is not related to searching, finding, buying, or comparing products.
-  This includes:
-  - Greetings and chitchat in ANY language: "hi", "kemon acho", "ki obostha", "hello bhai"
-  - General questions not about products: "what is AI", "ki kora jai", "help me", "who are you"
-  - Personal questions: "apni ke", "tumi ki", "what can you do"
-  - Nonsense or gibberish: "asdf", "123abc"
-  - Anything that does not involve a product category, brand, feature, or price
-  Rule: If you cannot imagine a product being the answer to this query, use off_topic.
+- off_topic: ANY query not related to searching, finding, buying, or comparing products.
+  This includes greetings, chitchat, general knowledge questions, personal questions, gibberish.
+  Rule: If you cannot imagine a product being the answer, use off_topic.
   When in doubt, use off_topic over general.
 
 FILTER EXTRACTION RULES:
-- brand: only if a specific brand is explicitly mentioned ("Sony", "Nike", "GoPro")
+- brand: only if a specific brand is explicitly mentioned ("Sony", "Nike", "GoPro").
   Do NOT extract brand from generic words ("mobile brand" → brand: null)
-- price: extract numeric value, convert currency mentions to number
+- price: extract numeric value, convert currency mentions to number.
   "5000 taka" → price_max: 5000
   "under $100" → price_max: 100
   "between 500 and 1000" → price_min: 500, price_max: 1000
@@ -166,6 +168,50 @@ FILTER EXTRACTION RULES:
 - is_banglish: true if query contains Bengali script or Banglish romanized Bengali
 - is_size_query: true if query contains size tokens (S, M, L, XL, XXL, small, medium, large)
 - is_brand_query: true if a specific brand name is present in the query
+
+BUDGET QUALIFIER RULES:
+Detect qualitative budget preference from ANY phrasing or language.
+Return "tight" | "mid" | "high" | null — never any other value.
+This is SEPARATE from price_max/price_min. Extract both when possible.
+
+  TIGHT — user wants cheap / affordable / low cost:
+    Direct English:   "tight budget", "cheap", "affordable", "low budget",
+                      "budget friendly", "easy on the pocket", "won't break the bank",
+                      "not looking to spend much", "something inexpensive",
+                      "cost effective", "value for money", "entry level",
+                      "basic", "economy", "not too expensive", "not too costly",
+                      "something simple", "nothing fancy"
+    Implicit English: "student", "fresher", "first laptop", "just started working",
+                      "new graduate", "college student", "school going"
+                      NOTE: implicit signals → "tight" only if no counter-signal present
+    Banglish:         "sosta", "shosta", "kom dam", "khoroch kom", "budget e kinbo",
+                      "beshi taka nai", "pocket e taka kom", "student hisebe",
+                      "gehna na", "dam kom hole valo", "ektu sosta hole valo hoi",
+                      "beshi khorca korte chai na", "kam budget e",
+                      "amar pocket e beshi taka nai", "beshi dam dite parbo na",
+                      "taka kom", "khoroch boro na", "simple ekta", "basic ekta"
+    Bengali script:   "সস্তা", "কম দাম", "কম খরচ", "সাশ্রয়ী",
+                      "বাজেটে", "স্বল্প বাজেট", "কম টাকায়", "সীমিত বাজেট"
+
+  MID — user wants mid-range / moderate:
+    "mid range", "moderate", "reasonable price", "fair price",
+    "not too cheap not too expensive", "madhyom", "মধ্যম বাজেট", "medium budget",
+    "something decent", "good enough"
+
+  HIGH — user wants premium / best quality regardless of price:
+    "premium", "high end", "flagship", "luxury", "best quality",
+    "no budget constraint", "money no object", "spare no expense",
+    "top of the line", "সেরা মানের", "দাম কোনো ব্যাপার না",
+    "best available", "most expensive", "top tier"
+
+  null — no budget preference expressed:
+    "samsung phone", "noise cancelling earbuds", "gaming mouse", "valo headphone dao"
+    (NOTE: "valo" = good in Bengali, NOT a budget signal on its own)
+
+  PRIORITY: explicit price number always wins over budget_qualifier.
+    "under 5000 tight budget" → price_max: 5000, budget_qualifier: "tight"
+    "tight budget laptop"     → price_max: null,  budget_qualifier: "tight"
+    "samsung phone"           → price_max: null,  budget_qualifier: null
 
 Return ONLY the JSON object, no explanation.\
 """
@@ -246,6 +292,12 @@ def _parse_llm_response(raw: str, original_query: str) -> ClassificationResult:
     if status is not None and str(status).strip().lower() in ("", "null", "none"):
         status = None
 
+    # ── NEW: budget_qualifier ─────────────────────────────────────────────
+    budget_qualifier = data.get("budget_qualifier")
+    if budget_qualifier not in ("tight", "mid", "high"):
+        budget_qualifier = None
+    # ─────────────────────────────────────────────────────────────────────
+
     return ClassificationResult(
         vector_weight     = round(vector_weight, 3),
         bm25_weight       = round(bm25_weight, 3),
@@ -261,6 +313,7 @@ def _parse_llm_response(raw: str, original_query: str) -> ClassificationResult:
         is_banglish       = bool(data.get("is_banglish", False)),
         is_size_query     = bool(data.get("is_size_query", False)),
         is_brand_query    = bool(data.get("is_brand_query", False)),
+        budget_qualifier  = budget_qualifier,   # ← NEW
     )
 
 
@@ -286,7 +339,8 @@ async def classify_and_extract(query: str) -> ClassificationResult:
         logger.info(
             "Classifier | query=%r | intent=%s | type=%s | "
             "weights=(v=%.2f, b=%.2f) | bm25_query=%r | "
-            "brand=%s | price_min=%s | price_max=%s | banglish=%s",
+            "brand=%s | price_min=%s | price_max=%s | "
+            "budget_qualifier=%s | banglish=%s",
             query,
             result.intent,
             result.query_type,
@@ -296,6 +350,7 @@ async def classify_and_extract(query: str) -> ClassificationResult:
             result.brand,
             result.price_min,
             result.price_max,
+            result.budget_qualifier,   # ← NEW in log
             result.is_banglish,
         )
         return result
@@ -316,12 +371,39 @@ _FB_COMPARE_RE   = re.compile(r"\b(vs|versus|compare|difference|better|between)\
 _FB_PRICE_RE     = re.compile(r"\b(under|below|above|over|between|price|cost|taka|tk|\$|budget|cheap|affordable)\b", re.IGNORECASE)
 _FB_BROWSE_RE    = re.compile(r"^(show|list|display|all|browse|see all|find all|give me all)\b", re.IGNORECASE)
 _FB_FEATURE_RE   = re.compile(r"\b(with|without|has|support|feature|waterproof|wireless|bluetooth|usb|hdmi|anc|noise.cancell?ing)\b", re.IGNORECASE)
-_FB_OFFTOPIC_RE = re.compile(
+_FB_OFFTOPIC_RE  = re.compile(
     r"^(hi|hello|hey|howdy|greetings|good (morning|afternoon|evening|night)|"
     r"how are you|what('s| is) up|who are you|what are you|tell me a joke|"
     r"thanks|thank you|bye|goodbye|ok|okay|yes|no|sure|nice|cool|great|lol)\b.*$",
     re.IGNORECASE,
 )
+
+# ── NEW: budget qualifier patterns for fallback ───────────────────────────────
+_FB_TIGHT_BUDGET_RE = re.compile(
+    r"\b(tight|cheap|cheapest|sosta|shosta|kom\s*dam|khoroch\s*kom|"
+    r"affordable|low[\s\-]budget|budget[\s\-]friendly|inexpensive|economy|"
+    r"easy\s+on\s+the\s+pocket|cost[\s\-]effective|value[\s\-]for[\s\-]money|"
+    r"not\s+too\s+expensive|not\s+too\s+costly|nothing\s+fancy|something\s+simple|"
+    r"student|fresher|entry[\s\-]level|"
+    r"beshi\s*taka\s*nai|pocket\s*e\s*taka\s*kom|"
+    r"beshi\s*dam\s*dite\s*parbo\s*na|kam\s*budget|"
+    r"taka\s*kom|khoroch\s*boro\s*na|simple\s*ekta|basic\s*ekta)\b",
+    re.IGNORECASE,
+)
+
+_FB_HIGH_BUDGET_RE = re.compile(
+    r"\b(premium|high[\s\-]end|flagship|luxury|best\s+quality|"
+    r"no\s+budget|money\s+no\s+object|spare\s+no\s+expense|"
+    r"top[\s\-]of[\s\-]the[\s\-]line|most\s+expensive|top\s+tier)\b",
+    re.IGNORECASE,
+)
+
+_FB_MID_BUDGET_RE = re.compile(
+    r"\b(mid[\s\-]range|moderate|reasonable\s+price|fair\s+price|"
+    r"medium\s+budget|something\s+decent|good\s+enough)\b",
+    re.IGNORECASE,
+)
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 def _fallback_classify(query: str) -> ClassificationResult:
@@ -329,16 +411,16 @@ def _fallback_classify(query: str) -> ClassificationResult:
     tokens = q.split()
     n      = len(tokens)
 
-    has_code     = bool(_FB_CODE_RE.search(q))
-    is_question  = bool(_FB_QUESTION_RE.match(q))
-    has_recommend= bool(_FB_RECOMMEND_RE.search(q))
-    has_compare  = bool(_FB_COMPARE_RE.search(q))
-    has_price    = bool(_FB_PRICE_RE.search(q))
-    is_browse    = bool(_FB_BROWSE_RE.match(q))
-    has_feature  = bool(_FB_FEATURE_RE.search(q))
-    has_digits   = bool(re.search(r"\d", q))
+    has_code      = bool(_FB_CODE_RE.search(q))
+    is_question   = bool(_FB_QUESTION_RE.match(q))
+    has_recommend = bool(_FB_RECOMMEND_RE.search(q))
+    has_compare   = bool(_FB_COMPARE_RE.search(q))
+    has_price     = bool(_FB_PRICE_RE.search(q))
+    is_browse     = bool(_FB_BROWSE_RE.match(q))
+    has_feature   = bool(_FB_FEATURE_RE.search(q))
+    has_digits    = bool(re.search(r"\d", q))
 
-    # ── OFF-TOPIC GATE ─────────────────────────────────────────
+    # ── OFF-TOPIC GATE ─────────────────────────────────────────────────────
     has_product_signal = any([
         has_code, has_recommend, has_compare,
         has_price, is_browse, has_feature,
@@ -351,8 +433,22 @@ def _fallback_classify(query: str) -> ClassificationResult:
             intent_confidence=0.90,
             secondary_intents=[],
             bm25_query=query,
+            budget_qualifier=None,
         )
-    # ───────────────────────────────────────────────────────────
+    # ───────────────────────────────────────────────────────────────────────
+
+    # ── NEW: budget qualifier detection ────────────────────────────────────
+    budget_qualifier: Optional[str] = None
+    if _FB_HIGH_BUDGET_RE.search(q):
+        budget_qualifier = "high"
+    elif _FB_MID_BUDGET_RE.search(q):
+        budget_qualifier = "mid"
+    elif _FB_TIGHT_BUDGET_RE.search(q):
+        budget_qualifier = "tight"
+    elif has_price and not has_digits:
+        # price words present but no numeric value = vague budget signal
+        budget_qualifier = "tight"
+    # ───────────────────────────────────────────────────────────────────────
 
     if has_compare:
         intent, confidence = Intent.COMPARISON, 0.75
@@ -402,6 +498,7 @@ def _fallback_classify(query: str) -> ClassificationResult:
         is_banglish       = False,
         is_size_query     = False,
         is_brand_query    = False,
+        budget_qualifier  = budget_qualifier,   # ← NEW
     )
 
 

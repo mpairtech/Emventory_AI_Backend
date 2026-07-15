@@ -29,9 +29,9 @@ class CacheService:
         return f"{prefix}:global"
 
     @classmethod
-    def _generate_field_key(cls, raw_query: str, provider: Optional[str] = None) -> str:
+    def _generate_field_key(cls, raw_query: str, provider: Optional[str] = None, language: str = "en") -> str:
         normalized = cls._normalize_for_cache(raw_query)
-        key_material = f"{normalized}:{provider}" if provider else normalized
+        key_material = f"{normalized}:{provider}:{language}" if provider else f"{normalized}:{language}"
         return hashlib.sha256(key_material.encode('utf-8')).hexdigest()
 
     @staticmethod
@@ -51,19 +51,19 @@ class CacheService:
             return None
 
     @classmethod
-    def get_rag_response(cls, normalized_query: str, org_id: Optional[str] = None, provider: str = "gemini") -> Optional[Dict[str, Any]]:
+    def get_rag_response(cls, normalized_query: str, org_id: Optional[str] = None, provider: str = "gemini", language: str = "en") -> Optional[Dict[str, Any]]:
         redis = get_redis()
         if not redis:
             logger.debug("Redis unavailable, cache miss")
             return None
         try:
             hash_key = cls._generate_hash_key(cls.PREFIX_RAG, org_id)
-            field_key = cls._generate_field_key(normalized_query, provider)
+            field_key = cls._generate_field_key(normalized_query, provider, language)
             cached_value = redis.hget(hash_key, field_key)
             if cached_value:
-                logger.info(f"Cache HIT - RAG (org={org_id}, provider={provider}, hash={field_key[:12]}...)")
+                logger.info(f"Cache HIT - RAG (org={org_id}, provider={provider}, language={language}, hash={field_key[:12]}...)")
                 return cls._deserialize(cached_value)
-            logger.debug(f"Cache MISS - RAG (org={org_id}, provider={provider})")
+            logger.debug(f"Cache MISS - RAG (org={org_id}, provider={provider}, language={language})")
             return None
         except RedisError as e:
             logger.error(f"Redis error during RAG GET: {e}")
@@ -73,18 +73,18 @@ class CacheService:
             return None
 
     @classmethod
-    def set_rag_response(cls, normalized_query: str, response: Dict[str, Any], org_id: Optional[str] = None, provider: str = "gemini", ttl: Optional[int] = None) -> bool:
+    def set_rag_response(cls, normalized_query: str, response: Dict[str, Any], org_id: Optional[str] = None, provider: str = "gemini", language: str = "en", ttl: Optional[int] = None) -> bool:
         redis = get_redis()
         if not redis:
             logger.debug("Redis unavailable, skipping RAG cache set")
             return False
         try:
             hash_key = cls._generate_hash_key(cls.PREFIX_RAG, org_id)
-            field_key = cls._generate_field_key(normalized_query, provider)
+            field_key = cls._generate_field_key(normalized_query, provider, language)
             ttl = ttl or settings.REDIS_TTL_RAG
             redis.hset(hash_key, field_key, cls._serialize(response))
             redis.expire(hash_key, ttl)
-            logger.info(f"Cache SET - RAG (org={org_id}, provider={provider}, hash={field_key[:12]}..., ttl={ttl}s)")
+            logger.info(f"Cache SET - RAG (org={org_id}, provider={provider}, language={language}, hash={field_key[:12]}..., ttl={ttl}s)")
             return True
         except RedisError as e:
             logger.error(f"Redis error during RAG SET: {e}")
@@ -202,6 +202,7 @@ class CacheService:
         except RedisError as e:
             logger.error(f"Redis error getting stats: {e}")
             return {"available": False, "error": str(e)}
+
     @classmethod
     def get_content(cls, field_key: str) -> Optional[Dict[str, Any]]:
         if settings.DISABLE_CACHE:
@@ -223,7 +224,7 @@ class CacheService:
         except Exception as e:
             logger.error(f"Unexpected error during Content cache GET: {e}")
             return None
- 
+
     @classmethod
     def set_content(cls, field_key: str, response: Dict[str, Any], ttl: Optional[int] = None) -> bool:
         if settings.DISABLE_CACHE:
@@ -244,4 +245,5 @@ class CacheService:
         except Exception as e:
             logger.error(f"Unexpected error during Content cache SET: {e}")
             return False
+
 cache_service = CacheService()
