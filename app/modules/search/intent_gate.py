@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 OFF_TOPIC_RESPONSE = "I can only help with product search."
 
-_MAX_QUERY_LEN     = 300
+_MAX_QUERY_LEN     = 350
 _LLM_TIMEOUT       = 5.0
 _LLM_MAX_TOKENS    = 5
 _CACHE_MAX_SIZE    = 1024
