@@ -17,13 +17,51 @@ from app.db.models.vector import ProductVector
 
 from app.modules.search.classifier import classify_and_extract, ClassificationResult
 from app.modules.search.embeddings import EmbeddingService
-from app.modules.search.intent_gate import is_relevant_query, OFF_TOPIC_RESPONSE  # ← NEW
+from app.modules.search.intent_gate import is_relevant_query, OFF_TOPIC_RESPONSE
 from app.modules.search.reranker import rerank
 from app.modules.search.repository import SearchRepository
 
 logger = logging.getLogger(__name__)
 
 _SYNONYM_MAP: Dict[str, Set[str]] = {}
+
+
+# ── NEW: budget-aware no-results message builder ──────────────────────────────
+
+def _build_no_results_msg(
+    classification: ClassificationResult,
+    language: str,
+) -> str:
+    """
+    Returns a no-results message that reflects the user's budget constraint
+    so they understand why nothing was found and what to do next.
+    Works for any product category.
+    """
+    if language == "bn":
+        if classification.budget_qualifier == "tight":
+            return (
+                "আপনার বাজেটের মধ্যে কোনো পণ্য পাওয়া যায়নি। "
+                "বাজেট একটু বাড়িয়ে আবার চেষ্টা করুন।"
+            )
+        if classification.price_max is not None:
+            return (
+                f"{classification.price_max:.0f} টাকার মধ্যে "
+                f"কোনো পণ্য পাওয়া যায়নি।"
+            )
+        return "আপনার অনুসন্ধানের জন্য কোনো পণ্য পাওয়া যায়নি।"
+
+    # English (default)
+    if classification.budget_qualifier == "tight":
+        return (
+            "No products found within your budget. "
+            "Try relaxing your budget or search for a different category."
+        )
+    if classification.price_max is not None:
+        return f"No products found under {classification.price_max:.0f}."
+    return "I couldn't find any relevant products for your query."
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 class SearchService:
@@ -242,7 +280,8 @@ class SearchService:
 
         logger.info(
             "Classifier | query=%r | intent=%s | secondary=%s | type=%s | "
-            "weights=(v=%.2f, b=%.2f) | bm25_query=%r | banglish=%s",
+            "weights=(v=%.2f, b=%.2f) | bm25_query=%r | "
+            "budget_qualifier=%s | banglish=%s",
             query,
             classification.intent,
             [i.value for i in classification.secondary_intents],
@@ -250,6 +289,7 @@ class SearchService:
             classification.vector_weight,
             classification.bm25_weight,
             classification.bm25_query,
+            classification.budget_qualifier,   # ← NEW in log
             classification.is_banglish,
         )
 
@@ -287,16 +327,21 @@ class SearchService:
             return []
 
         reranked = await rerank(
-            query      = query,
-            candidates = candidates,
-            top_k      = top_k,
-            threshold  = 0.50,
-            intent     = classification.intent,
+            query            = query,
+            candidates       = candidates,
+            top_k            = top_k,
+            threshold        = 0.60,
+            intent           = classification.intent,
+            price_max        = classification.price_max,          # ← NEW
+            price_min        = classification.price_min,          # ← NEW
+            budget_qualifier = classification.budget_qualifier,   # ← NEW
         )
 
         logger.info(
-            "Semantic search | org=%s | query=%r | raw=%d | candidates=%d | reranked=%d",
-            org_id, query, len(raw_results or []), len(candidates), len(reranked),
+            "Semantic search | org=%s | query=%r | budget_qualifier=%s | "
+            "raw=%d | candidates=%d | reranked=%d",
+            org_id, query, classification.budget_qualifier,
+            len(raw_results or []), len(candidates), len(reranked),
         )
         return reranked
 
@@ -308,6 +353,7 @@ class SearchService:
         llm_provider: str = "gemini",
         top_k: int = 5,
         filters=None,
+        language: str = "en",
     ) -> dict:
         # ── guard: empty query ──────────────────────────────────────────────
         if not query or not query.strip():
@@ -317,7 +363,11 @@ class SearchService:
         if not await is_relevant_query(query):
             logger.info("Intent gate BLOCKED | rag_search | query=%r", query)
             return {
-                "answer": OFF_TOPIC_RESPONSE,
+                "answer": (
+                    "আমি শুধু পণ্য খুঁজতে সাহায্য করতে পারি।"
+                    if language == "bn"
+                    else OFF_TOPIC_RESPONSE
+                ),
                 "sources": [],
                 "off_topic": True,
             }
@@ -329,7 +379,8 @@ class SearchService:
 
         logger.info(
             "Classifier | query=%r | intent=%s | secondary=%s | type=%s | "
-            "weights=(v=%.2f, b=%.2f) | bm25_query=%r | banglish=%s",
+            "weights=(v=%.2f, b=%.2f) | bm25_query=%r | "
+            "budget_qualifier=%s | banglish=%s",
             query,
             classification.intent,
             [i.value for i in classification.secondary_intents],
@@ -337,6 +388,7 @@ class SearchService:
             classification.vector_weight,
             classification.bm25_weight,
             classification.bm25_query,
+            classification.budget_qualifier,   # ← NEW in log
             classification.is_banglish,
         )
 
@@ -349,14 +401,27 @@ class SearchService:
         cached = await loop.run_in_executor(
             None,
             lambda: cache_service.get_rag_response(
-                normalized_query=prepared_query, org_id=org_id, provider=provider
+                normalized_query=prepared_query,
+                org_id=org_id,
+                provider=provider,
+                language=language,
             ),
         )
         if cached:
-            logger.info("RAG cache HIT | org=%s | provider=%s", org_id, provider)
+            logger.info(
+                "RAG cache HIT | org=%s | provider=%s | language=%s",
+                org_id, provider, language,
+            )
             return cached
 
-        logger.info("RAG cache MISS | org=%s | provider=%s", org_id, provider)
+        logger.info(
+            "RAG cache MISS | org=%s | provider=%s | language=%s",
+            org_id, provider, language,
+        )
+
+        # ── Budget-aware no-results message ───────────────────────────────
+        no_results_msg = _build_no_results_msg(classification, language)
+        # ─────────────────────────────────────────────────────────────────
 
         embedding = await EmbeddingService.embed(prepared_query)
 
@@ -382,10 +447,7 @@ class SearchService:
             candidates = SearchService._apply_filters(candidates, filters)
 
         if not candidates:
-            response = {
-                "answer": "I couldn't find any relevant products for your query.",
-                "sources": []
-            }
+            response = {"answer": no_results_msg, "sources": []}
             await loop.run_in_executor(
                 None,
                 lambda: cache_service.set_rag_response(
@@ -393,24 +455,25 @@ class SearchService:
                     response=response,
                     org_id=org_id,
                     provider=provider,
+                    language=language,
                     ttl=300,
                 ),
             )
             return response
 
         ranked = await rerank(
-            query      = query,
-            candidates = candidates,
-            top_k      = top_k,
-            threshold  = 0.50,
-            intent     = classification.intent,
+            query            = query,
+            candidates       = candidates,
+            top_k            = top_k,
+            threshold        = 0.50,
+            intent           = classification.intent,
+            price_max        = classification.price_max,          # ← NEW
+            price_min        = classification.price_min,          # ← NEW
+            budget_qualifier = classification.budget_qualifier,   # ← NEW
         )
 
         if not ranked:
-            response = {
-                "answer": "I couldn't find any relevant products for your query.",
-                "sources": []
-            }
+            response = {"answer": no_results_msg, "sources": []}
             await loop.run_in_executor(
                 None,
                 lambda: cache_service.set_rag_response(
@@ -418,6 +481,7 @@ class SearchService:
                     response=response,
                     org_id=org_id,
                     provider=provider,
+                    language=language,
                     ttl=300,
                 ),
             )
@@ -437,9 +501,11 @@ class SearchService:
         context = "\n".join(context_parts)
 
         if provider == "openai":
-            answer = await OpenAIClient.generate(query, context)
+            answer = await OpenAIClient.generate(query, context, language=language)
         else:
-            answer = await loop.run_in_executor(None, GeminiClient.generate, query, context)
+            answer = await loop.run_in_executor(
+                None, GeminiClient.generate, query, context, language
+            )
 
         response = {"answer": answer, "sources": ranked}
 
@@ -450,12 +516,16 @@ class SearchService:
                 response=response,
                 org_id=org_id,
                 provider=provider,
+                language=language,
             ),
         )
 
         logger.info(
-            "RAG search | org=%s | query=%r | raw=%d | candidates=%d | ranked=%d",
-            org_id, query, len(raw_results or []), len(candidates), len(ranked),
+            "RAG search | org=%s | query=%r | language=%s | "
+            "budget_qualifier=%s | raw=%d | candidates=%d | ranked=%d",
+            org_id, query, language,
+            classification.budget_qualifier,   # ← NEW in log
+            len(raw_results or []), len(candidates), len(ranked),
         )
         return response
 

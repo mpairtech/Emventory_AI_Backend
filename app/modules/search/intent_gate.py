@@ -1,23 +1,4 @@
-"""
-Intent Gate — relevance pre-check before the main classifier.
 
-Two-layer design:
-  Layer 1: Rule-based (zero cost, <1ms)  — kills obvious off-topic queries
-  Layer 2: LLM-based  (gpt-4o-mini)     — handles ambiguous cases
-
-Only queries that pass BOTH layers proceed to classify_and_extract()
-and the full search pipeline.
-
-Fixes applied (v2):
-  - Singleton client initialized at module level (thread-safe)
-  - _GateVerdict enum replaces bool | None return type
-  - _GIBBERISH_RE logic error fixed (no longer blocks "TV", "I", "AI")
-  - Prompt injection sanitization on user query
-  - TTL cache on LLM gate results via stdlib (zero new dependencies)
-  - Brand list moved to a frozenset config (maintainable)
-  - Constants grouped at top of file
-  - Query length cap before LLM call
-"""
 
 from __future__ import annotations
 
@@ -37,26 +18,19 @@ logger = logging.getLogger(__name__)
 
 OFF_TOPIC_RESPONSE = "I can only help with product search."
 
-_MAX_QUERY_LEN     = 300    # chars — anything longer gets truncated before LLM
-_LLM_TIMEOUT       = 5.0    # seconds
-_LLM_MAX_TOKENS    = 5      # only "true" or "false" needed
-_CACHE_MAX_SIZE    = 1024   # max unique queries cached
-_CACHE_TTL_SECONDS = 3600   # 1 hour — gate result unlikely to change per query
+_MAX_QUERY_LEN     = 350
+_LLM_TIMEOUT       = 5.0
+_LLM_MAX_TOKENS    = 5
+_CACHE_MAX_SIZE    = 1024
+_CACHE_TTL_SECONDS = 3600
 
-# ─── Stdlib TTL cache (no external dependency) ────────────────────────────────
+# ─── Stdlib TTL cache ─────────────────────────────────────────────────────────
 
 class _TTLCache:
-    """
-    Simple TTL cache backed by a plain dict.
-    Evicts expired entries on every read/write.
-    Not thread-safe for multi-process deployments — use Redis for that.
-    Sufficient for single-process async FastAPI workers.
-    """
-
     def __init__(self, maxsize: int, ttl: float) -> None:
         self._maxsize = maxsize
         self._ttl     = ttl
-        self._store:  Dict[str, Tuple[bool, float]] = {}  # key → (value, expires_at)
+        self._store:  Dict[str, Tuple[bool, float]] = {}
 
     def get(self, key: str) -> bool | None:
         entry = self._store.get(key)
@@ -69,7 +43,6 @@ class _TTLCache:
         return value
 
     def set(self, key: str, value: bool) -> None:
-        # Evict oldest entry if at capacity
         if len(self._store) >= self._maxsize and key not in self._store:
             oldest_key = next(iter(self._store))
             del self._store[oldest_key]
@@ -79,7 +52,7 @@ class _TTLCache:
         return len(self._store)
 
 
-# ─── Brand / product keyword config (extend here, not in regex) ───────────────
+# ─── Brand / product keyword config ───────────────────────────────────────────
 
 _KNOWN_BRANDS: frozenset[str] = frozenset({
     "nike", "adidas", "puma", "reebok",
@@ -91,24 +64,52 @@ _KNOWN_BRANDS: frozenset[str] = frozenset({
 })
 
 _PRODUCT_KEYWORDS: frozenset[str] = frozenset({
+    # Commerce intent
     "buy", "price", "cost", "taka", "tk", "under", "below",
     "above", "budget", "cheap", "sosta", "brand", "model",
     "spec", "feature", "review", "rating", "stock", "available",
     "ache", "pabo", "recommend", "suggest", "best", "top",
-    "vs", "compare", "wireless", "bluetooth", "camera", "laptop",
-    "phone", "mobile", "headphone", "earphone", "watch", "tablet",
-    "tv", "monitor", "keyboard", "mouse", "charger", "cable",
-    "bag", "shoe", "shirt", "pant", "dress", "jacket", "dekhao",
+    "vs", "compare",
+
+    # Product categories
+    "wireless", "bluetooth", "camera", "laptop", "phone", "mobile",
+    "headphone", "earphone", "watch", "tablet", "tv", "monitor",
+    "keyboard", "mouse", "charger", "cable", "bag", "shoe",
+    "shirt", "pant", "dress", "jacket",
+
+    # Bengali / Banglish actions
+    "dekhao", "lagbe", "kinbo", "nibo", "dao",
+
+    # Occupations
+    "engineer", "developer", "programmer", "designer", "photographer",
+    "videographer", "doctor", "nurse", "teacher", "chef", "cook",
+    "athlete", "runner", "cyclist", "gamer", "student", "freelancer",
+    "architect", "artist", "musician", "carpenter", "tailor", "writer",
+    "journalist", "lawyer", "accountant", "trader", "businessman",
+
+    # Bengali occupations
+    "ইঞ্জিনিয়ার", "ডেভেলপার", "ডাক্তার", "শিক্ষক", "ফটোগ্রাফার",
+    "গেমার", "ছাত্র", "শিক্ষার্থী", "উদ্যোক্তা", "ব্যবসায়ী",
+    "নার্স", "শিল্পী", "সংগীতশিল্পী",
+
+    # Tech stack words
+    "docker", "redis", "postgresql", "postgres", "mongodb", "mysql",
+    "linux", "ubuntu", "python", "javascript", "react", "nodejs",
+    "kubernetes",
+
+    # Activity / routine words
+    "travel", "commute", "carry", "portable", "outdoor", "indoor",
+    "ভ্রমণ", "যাতায়াত", "অফিস", "office",
 })
 
-# ─── Verdict enum (replaces bool | None) ──────────────────────────────────────
+# ─── Verdict enum ─────────────────────────────────────────────────────────────
 
 class _GateVerdict(Enum):
-    ALLOW  = "allow"   # definitely product-related, skip LLM
-    BLOCK  = "block"   # definitely off-topic, skip LLM
-    UNSURE = "unsure"  # ambiguous, escalate to LLM gate
+    ALLOW  = "allow"
+    BLOCK  = "block"
+    UNSURE = "unsure"
 
-# ─── Layer 1: Rule-based patterns (zero LLM cost) ────────────────────────────
+# ─── Layer 1: Rule-based patterns ────────────────────────────────────────────
 
 _GREET_RE = re.compile(
     r"^(hi+|hello+|hey+|howdy|greetings|salaam|assalamu\s*alaikum|"
@@ -127,17 +128,62 @@ _CHITCHAT_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Fixed: no longer blocks "TV", "LG", "A1" etc.
-# Only blocks: purely non-letter/digit strings, or single char repeated 5+ times
 _GIBBERISH_RE = re.compile(
-    r"^[^a-zA-Z\u0980-\u09FF\d]+$"   # no letters or digits at all (e.g. "!!!###")
-    r"|^(.)\1{4,}$",                  # single char repeated 5+ times (e.g. "aaaaa")
+    r"^[^a-zA-Z\u0980-\u09FF\d]+$"
+    r"|^(.)\1{4,}$",
+    re.IGNORECASE,
+)
+
+# ── NEW: use-case / implicit product request pattern ─────────────────────────
+# Detects queries where the user describes their lifestyle, job, or daily
+# routine instead of naming a product directly.
+# Pattern-based, not domain-specific — works for ANY product category.
+_USECASE_RE = re.compile(
+    r"("
+    # First-person statements in any language
+    r"আমি|ami\b|আমার|amar\b|"
+    r"I\s+am\b|I\s+work|I\s+do\b|I\s+use\b|I\s+need\b|"
+    r"I\s+travel|I\s+commute|I\s+carry|I\s+run|I\s+play|I\s+cook|"
+    r"I\s+shoot|I\s+edit|I\s+design|I\s+code|I\s+teach|I\s+ride|"
+
+    # Routine / frequency signals
+    r"সারাদিন|প্রতিদিন|প্রতিরাত|সবসময়|"
+    r"all\s*day|every\s*day|daily|always|regularly|constantly|"
+    r"all\s*night|every\s*night|"
+
+    # Physical context / environment
+    r"outdoor|indoor|on\s*the\s*go|in\s*the\s*field|"
+    r"বাইরে|মাঠে|রান্নাঘরে|স্টুডিওতে|"
+
+    # Job / work context
+    r"remote\s*job|work\s*from\s*home|office\s*work|field\s*work|"
+    r"রিমোট\s*জব|ঘরে\s*বসে\s*কাজ|অফিসে\s*কাজ|"
+
+    # Pain / discomfort signals
+    r"back\s*pain|wrist\s*pain|eye\s*strain|neck\s*pain|shoulder\s*pain|"
+    r"পিঠে\s*ব্যথা|কব্জিতে\s*ব্যথা|চোখে\s*সমস্যা|ঘাড়ে\s*ব্যথা|"
+
+    # Distance / duration with units
+    r"\d+\s*(km|কিলোমিটার|miles?|hours?|ঘণ্টা|minutes?|মিনিট|"
+    r"kg|কেজি|liters?|লিটার)\b|"
+
+    # Tech stack
+    r"docker|redis|postgresql|postgres|mongodb|mysql|linux|ubuntu|"
+    r"python|javascript|typescript|react|nodejs|kubernetes|ansible|"
+
+    # Professional activity verbs
+    r"photograph|videograph|record\s*video|live\s*stream|stream\s*games|"
+    r"ছবি\s*তুলি|ভিডিও\s*করি|লাইভ\s*করি|"
+    r"play\s*guitar|play\s*piano|play\s*drums|practice\s*music|"
+    r"গিটার\s*বাজাই|গান\s*করি|"
+    r"cook\s*professionally|run\s*marathon|cycle\s*daily|"
+    r"রান্না\s*করি|সেলাই\s*করি|বুনন\s*করি"
+    r")",
     re.IGNORECASE,
 )
 
 
 def _build_product_signal_pattern() -> re.Pattern[str]:
-    """Build product signal regex from config frozensets — single source of truth."""
     all_terms = _PRODUCT_KEYWORDS | _KNOWN_BRANDS
     escaped   = sorted(re.escape(t) for t in all_terms)
     pattern   = r"\b(" + "|".join(escaped) + r")\b"
@@ -149,11 +195,11 @@ _PRODUCT_SIGNAL_RE = _build_product_signal_pattern()
 
 def _rule_based_check(query: str) -> _GateVerdict:
     """
-    Fast rule-based pre-filter. Zero LLM cost.
+    Fast rule-based pre-filter.
 
     Returns:
-        BLOCK  — definitely off-topic (greeting, chitchat, gibberish)
-        ALLOW  — definitely product-related (known brand/keyword signal)
+        BLOCK  — greeting, chitchat, or gibberish
+        ALLOW  — known product keyword/brand OR use-case description
         UNSURE — ambiguous, escalate to LLM gate
     """
     q = query.strip()
@@ -174,10 +220,15 @@ def _rule_based_check(query: str) -> _GateVerdict:
         logger.debug("Intent gate [rule] ALLOW product signal | query=%r", q)
         return _GateVerdict.ALLOW
 
+    # NEW: implicit use-case / lifestyle description
+    if _USECASE_RE.search(q):
+        logger.debug("Intent gate [rule] ALLOW use-case signal | query=%r", q)
+        return _GateVerdict.ALLOW
+
     return _GateVerdict.UNSURE
 
 
-# ─── Layer 2: LLM-based gate (gpt-4o-mini) ───────────────────────────────────
+# ─── Layer 2: LLM-based gate ─────────────────────────────────────────────────
 
 _SYSTEM_PROMPT = """\
 You are a strict query relevance classifier for an AI-powered e-commerce product search engine.
@@ -189,8 +240,49 @@ A query IS relevant if it involves:
 - Asking about product features, specs, price, or availability
 - Comparing products or brands
 - Requesting recommendations or suggestions for products
-- Any product category: electronics, clothing, accessories, gadgets, appliances, etc.
+- Any product category: electronics, clothing, accessories, gadgets, appliances,
+  kitchen tools, sports equipment, musical instruments, medical devices, etc.
 - Banglish or Bengali queries about products (e.g. "valo headphone dao", "samsung phone ache?")
+
+IMPORTANT — IMPLICIT PRODUCT REQUESTS:
+A query is ALSO relevant if the user describes their lifestyle, job, use case,
+or daily routine in a way that clearly implies they want a product recommendation.
+These are NOT off-topic even though they contain no explicit product name or question.
+
+Examples of IMPLICIT but RELEVANT queries — always return true for these:
+- "আমি Software Engineer। Remote job করি। সারাদিন Docker, Redis আর PostgreSQL চালাই।
+   আমি প্রতিদিন অফিসে ল্যাপটপ নিয়ে যাই। অনেক ভ্রমণ করি।"
+  -> User wants a laptop recommendation. true.
+
+- "I travel a lot and need something lightweight with good battery life."
+  -> User wants a laptop or bag recommendation. true.
+
+- "আমি প্রতিদিন অফিসে যাই, অনেক হাঁটতে হয়।"
+  -> User wants comfortable shoes or a bag. true.
+
+- "I work from home and my back hurts from sitting all day."
+  -> User wants an ergonomic chair or desk. true.
+
+- "আমি গেমার, রাত জেগে গেম খেলি।"
+  -> User wants gaming gear. true.
+
+- "I am a photographer and shoot outdoors in all weather."
+  -> User wants a camera bag or weather-sealed camera. true.
+
+- "আমি রান্না করি, সারাদিন রান্নাঘরে থাকি।"
+  -> User wants kitchen appliances or tools. true.
+
+- "I cycle 30km every day to work."
+  -> User wants cycling gear, helmet, or bag. true.
+
+- "আমি গিটার বাজাই, প্রতিদিন ৪ ঘণ্টা প্র্যাকটিস করি।"
+  -> User wants guitar accessories or amplifier. true.
+
+- "I am a nurse and stand for 12 hours a day."
+  -> User wants comfortable shoes or compression socks. true.
+
+- "আমি সেলাই করি। অনেকক্ষণ বসে কাজ করতে হয়।"
+  -> User wants a sewing machine or ergonomic chair. true.
 
 A query is NOT relevant if it involves:
 - Greetings or chitchat ("hi", "kemon acho", "how are you")
@@ -205,37 +297,30 @@ Respond with ONLY one word: true or false
 
 No explanation. No punctuation. Just: true or false"""
 
-# Initialized once at module level — thread-safe, no lazy singleton needed
 _llm_gate_client: AsyncOpenAI = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-
-# Stdlib TTL cache — same query won't hit the LLM twice within 1 hour
 _gate_cache = _TTLCache(maxsize=_CACHE_MAX_SIZE, ttl=_CACHE_TTL_SECONDS)
 
 
 def _sanitize_query(query: str) -> str:
-    """
-    Sanitize user input before embedding in LLM prompt.
-    Prevents basic prompt injection via quote escaping and length cap.
-    """
     sanitized = query.replace('"', "'").replace("\n", " ").replace("\r", " ")
     return sanitized[:_MAX_QUERY_LEN].strip()
 
 
 async def _llm_based_check(query: str) -> bool:
     """
-    LLM-based relevance gate using gpt-4o-mini with a strict system prompt.
-
+    LLM-based relevance gate using gpt-4o-mini.
     Returns True if relevant, False if off-topic.
-    Falls back to True (allow) on any error — never block legitimate queries
-    due to an infrastructure failure.
-
-    Results are cached by normalized query for 1 hour to avoid redundant calls.
+    Falls back to True (allow) on any error.
+    Results cached for 1 hour per unique query.
     """
     cache_key = query.strip().lower()
 
     cached = _gate_cache.get(cache_key)
     if cached is not None:
-        logger.debug("Intent gate [LLM cache HIT] | query=%r | result=%s", query, cached)
+        logger.debug(
+            "Intent gate [LLM cache HIT] | query=%r | result=%s",
+            query, cached,
+        )
         return cached
 
     sanitized   = _sanitize_query(query)
@@ -269,28 +354,28 @@ async def _llm_based_check(query: str) -> bool:
             query,
             exc_info=True,
         )
-        return True  # fail open: never block legitimate queries on LLM error
+        return True  # fail open
 
 
 # ─── Public API ───────────────────────────────────────────────────────────────
 
 async def is_relevant_query(query: str) -> bool:
     """
-    Two-layer relevance gate. Called before classify_and_extract().
+    Two-layer relevance gate.
 
     Layer 1 — Rule-based (zero cost, <1ms):
-      - Gibberish / empty           → BLOCK immediately
-      - Greetings / chitchat        → BLOCK immediately
-      - Known product keyword/brand → ALLOW immediately
+      BLOCK:  gibberish, greetings, chitchat
+      ALLOW:  known product keyword/brand OR use-case/lifestyle description
+      UNSURE: escalate to LLM
 
-    Layer 2 — LLM gate (only for UNSURE queries):
-      - gpt-4o-mini with strict system prompt
-      - Results cached for 1 hour per unique query
-      - Fails open on error (never blocks legitimate users)
+    Layer 2 — LLM gate (only for UNSURE):
+      gpt-4o-mini with implicit request examples in system prompt
+      Cached 1 hour per unique query
+      Fails open on error
 
     Returns:
-        True  — query is product-relevant, proceed to classifier + search
-        False — query is off-topic, return OFF_TOPIC_RESPONSE to caller
+        True  — proceed to classifier + search
+        False — return off-topic response to caller
     """
     if not query or not query.strip():
         return False
@@ -302,5 +387,4 @@ async def is_relevant_query(query: str) -> bool:
     if verdict == _GateVerdict.BLOCK:
         return False
 
-    # UNSURE — escalate to LLM
     return await _llm_based_check(query)
