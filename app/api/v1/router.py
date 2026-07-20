@@ -2,6 +2,7 @@ from fastapi import APIRouter, Header, HTTPException, Depends, Query, status
 from typing import Optional
 from app.api.v1.routers.search import router as search_router
 from app.api.v1.routers.content import router as content_router
+from app.api.v1.routers.quota import router as quota_router 
 
 from app.core.cache.cache_service import cache_service
 from app.api.v1.schemas import R2VoiceSearchRequest
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 
 from app.modules.search.service import SearchService
+from app.modules.search.quota import check_search_quota
 from app.api.v1.routers.search import get_active_provider
 from app.core.config import settings
 from app.core.exceptions import (
@@ -120,6 +122,7 @@ router.include_router(
     content_router,
     dependencies=[Depends(verify_api_key)]
 )
+router.include_router(quota_router, dependencies=[Depends(verify_api_key)])
 
 
 # ---------------------------------------------------------------------------
