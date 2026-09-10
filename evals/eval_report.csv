@@ -1,0 +1,308 @@
+case_index,intent,query,notes,latency_ms,products_found,hallucination,order_correct,off_topic_leaked,budget_respected,relevance_score,faithfulness_score,off_topic_flag,answer,source_names,judge_reasoning,error
+0,off_topic,kemon acho,Should be blocked by intent gate; answer should be off-topic message,0.0,1.0,False,True,False,True,0.0,1.0,True,I can only help with product search.,,"The answer is completely irrelevant to the query as there are no products to recommend, but it accurately states the system's limitation.",
+1,price_filter,Show me products under $100,This query tests the price filtering intent.,7281.0,0.0,False,True,False,True,1.0,1.0,False,"• Maybelline Instant Age Rewind  
+• Neutrogena Ultra Sheer Sunscreen SPF100  
+• Nivea Men Active Energy Face Wash  
+• L'Oreal Elvive Extraordinary Oil","Maybelline Instant Age Rewind, Neutrogena Ultra Sheer Sunscreen SPF100, Nivea Men Active Energy Face Wash, L'Oreal Elvive Extraordinary Oil","The answer includes all products listed in the source, all of which are under $100, making it both relevant and faithful.",
+2,browse,Show me all computer peripherals available,This query tests the browsing intent for a specific category.,7343.0,1.0,False,True,False,True,1.0,1.0,False,"• Razer Kraken V3  
+• Logitech MX Keys Mini Keyboard  
+• Corsair K70 RGB Keyboard  
+• Logitech C920 Webcam  
+• Corsair K60 RGB Pro  
+
+All are computer peripherals.","Razer Kraken V3, Logitech MX Keys Mini Keyboard, Corsair K70 RGB Keyboard, Logitech C920 Webcam, Corsair K60 RGB Pro",The answer includes all the products listed in the source and correctly categorizes them as computer peripherals.,
+3,browse,Beauty products gulo dekhte chai,This query tests the browsing intent for beauty category products.,6797.0,1.0,False,True,False,True,1.0,1.0,False,"• Nivea Men Active Energy Face Wash  
+• L'Oreal Elvive Extraordinary Oil  
+• Nivea Sun Protect & Moisture SPF50  
+• L'Oreal True Match Foundation  
+• Maybelline Sky High Mascara","Nivea Men Active Energy Face Wash, L'Oreal Elvive Extraordinary Oil, Nivea Sun Protect & Moisture SPF50, L'Oreal True Match Foundation, Maybelline Sky High Mascara",The answer includes all the relevant beauty products from the source list without any inaccuracies.,
+4,exact_lookup,Xiaomi Redmi Note 12,This query tests the user's intent to find a specific product by name.,3938.0,1.0,True,True,False,True,1.0,1.0,False,"• Xiaomi Redmi Note 12  
+Reliable mid-range smartphone with smooth display and long battery.",Xiaomi Redmi Note 12,"The answer directly recommends the Xiaomi Redmi Note 12, which is the exact product from the source, and all claims about it being a reliable mid-range smartphone with a smooth display and long battery are supported by the source.",
+5,off_topic,who invented the internet?,Should be blocked by intent gate; answer should be off-topic message,750.0,1.0,False,True,False,True,0.0,1.0,True,I can only help with product search.,,"The answer is completely irrelevant to the query about the invention of the internet, but it accurately states the system's limitation regarding product search.",
+6,price_filter,Show me TVs under $1100,This query tests a price filtering intent for televisions.,5735.0,0.0,False,True,False,True,1.0,1.0,False,"• Sony X80L 50 inch  
+• Sony X90L 65 inch  
+• Sony X77L 43 inch  
+• TCL C645 QLED 50 inch  
+• TCL P735 4K 55 inch","Sony X80L 50 inch, Sony X90L 65 inch, TCL C645 QLED 50 inch, Sony X77L 43 inch, TCL P735 4K 55 inch",The answer includes all the relevant TVs under $1100 from the source products without any inaccuracies.,
+7,browse,Smartphone gulo dekhte chai,This query tests browsing all products in the smartphone category.,5407.0,1.0,False,True,False,True,1.0,1.0,False,"• Realme Realme Narzo 60  
+• Nokia Nokia G42  
+• Nokia Nokia C22  
+• Infinix Infinix Zero 30  
+• Xiaomi Poco X5","Realme Realme Narzo 60, Nokia Nokia G42, Nokia Nokia C22, Infinix Infinix Zero 30, Xiaomi Poco X5","The answer includes all the smartphones listed in the source products, making it both relevant and faithful to the provided context.",
+8,price_filter,Show me products under 100 dollars,This query tests the price filter intent for budget products.,4500.0,0.0,False,False,False,True,1.0,1.0,False,"• Maybelline Instant Age Rewind  
+• Nivea Men Active Energy Face Wash  
+• Neutrogena Ultra Sheer Sunscreen SPF100","Maybelline Instant Age Rewind, Nivea Men Active Energy Face Wash, Neutrogena Ultra Sheer Sunscreen SPF100","The answer includes all the products listed in the source that are under 100 dollars, and all claims are supported by the source products.",
+9,comparison,Should I get the Breville Smart Waffle Maker or the ASUS ROG Phone 9 Pro?,This query tests the user's intent to compare two distinct products.,4437.0,1.0,False,True,False,True,0.7,1.0,False,"• Breville Smart Waffle Maker  
+Reliable kitchen appliance for meal preparation.
+
+No ASUS ROG Phone 9 Pro available for comparison.","Breville Smart Waffle Maker, RedMagic 9S Pro, RedMagic 10 Pro","The answer correctly identifies the Breville Smart Waffle Maker as a relevant product but fails to mention any smartphone options, leading to a minor miss in relevance.",
+10,availability,Is the Steelcase Amia Chair available in stock?,This query tests the availability of a specific product.,4859.0,1.0,False,True,False,True,0.7,0.7,False,"• Steelcase Amia Chair  
+No stock information provided.",Steelcase Amia Chair,"The answer correctly identifies the Steelcase Amia Chair but fails to provide stock information, which is a key aspect of the query.",
+11,recommendation,Looking for a good chair for my home office setup.,This query tests a recommendation for a product based on use case.,5204.0,0.0,False,True,False,True,1.0,1.0,False,"• IKEA MARKUS Office Chair  
+Ergonomic, designed for long home office hours.  
+
+• Herman Miller Aeron Chair  
+Premium ergonomic comfort for long work sessions.  
+
+• Herman Miller Embody Chair  
+Ergonomic and comfortable for productivity at home.  
+
+• Steelcase Series 1 Chair  
+Durable with adjustabl","IKEA MARKUS Office Chair, Herman Miller Aeron Chair, Herman Miller Mirra 2 Chair, Herman Miller Embody Chair, Steelcase Series 1 Chair","The answer recommends relevant chairs for a home office setup and accurately describes their ergonomic features, all supported by the source products.",
+12,comparison,Should I get the Apple MacBook Air or the Amazfit GTS 4 Mini?,This query tests the comparison intent between a laptop and a smartwatch.,3047.0,0.0,False,False,False,True,0.0,1.0,False,I couldn't find any relevant products for your query.,,"The answer correctly states that no relevant products were found, which is faithful to the absence of source products, but it is completely irrelevant to the user's query.",
+13,comparison,Amazfit GTS 4 Mini vs Breville Barista Express,This query tests the comparison intent between a smartwatch and a kitchen appliance.,3078.0,0.0,False,False,False,True,0.0,1.0,False,I couldn't find any relevant products for your query.,,"The answer correctly states that there are no relevant products found for the query, which is faithful to the absence of source products.",
+14,comparison,JBL Tune 125TWS vs Vivo Vivo Y36,This query tests the comparison intent between an audio product and a smartphone.,3218.0,0.0,False,False,False,True,0.0,1.0,False,I couldn't find any relevant products for your query.,,"The answer correctly states that there are no relevant products found, which is faithful to the absence of source products.",
+15,exact_lookup,Garmin Forerunner 255 smartwatch,This query tests the user's intent to find a specific product by name.,4921.0,1.0,False,True,False,True,1.0,1.0,False,"• Garmin Forerunner 255  
+Advanced GPS running smartwatch for serious runners.",Garmin Forerunner 255,"The answer directly recommends the Garmin Forerunner 255, which is the exact product from the source, and all claims about it are supported by the source product information.",
+16,feature_search,What type of cushioning does the Adidas Forum Low have?,This query tests for a specific feature of a product.,3094.0,0.0,False,True,False,True,0.0,0.0,False,I couldn't find any relevant products for your query.,,"The answer does not provide any information about the Adidas Forum Low or its cushioning, making it completely irrelevant and unfaithful to the query.",
+17,recommendation,"Need a gadget for quick breakfasts at home, any suggestions?",This query tests the recommendation intent for kitchen appliances.,4953.0,1.0,False,True,False,True,0.7,1.0,False,"• Breville Smart Waffle Maker  
+Quick and convenient for breakfast preparation.","Philips Air Fryer HD9252, Breville Smart Waffle Maker","The answer recommends the Breville Smart Waffle Maker, which is relevant for quick breakfasts, but it misses mentioning the Philips Air Fryer, which is also suitable.",
+18,feature_search,Does the Microsoft Xbox Wireless Headset have noise cancellation feature?,This query tests for a specific feature in a product.,3156.0,0.0,False,True,False,True,0.0,1.0,False,I couldn't find any relevant products for your query.,,"The answer correctly states that there are no relevant products found, which is faithful to the absence of source products, but it is completely irrelevant to the user's query about the headset's features.",
+19,browse,Show me all smartphones available,This query tests the browsing intent for a category of products.,4125.0,1.0,False,True,False,True,1.0,1.0,False,"• Xiaomi Redmi Note 12  
+• Samsung Galaxy S25  
+• Xiaomi Poco X5  
+• Oppo Oppo Reno 10  
+• Oppo Oppo A17","Xiaomi Redmi Note 12, Samsung Galaxy S25, Xiaomi Poco X5, Oppo Oppo Reno 10, Oppo Oppo A17",The answer lists all the smartphones from the source products without any omissions or inaccuracies.,
+20,recommendation,Looking for stylish sneakers for both running and casual wear.,This query tests a recommendation based on multi-use footwear.,5297.0,0.0,False,True,False,True,0.0,1.0,False,I couldn't find any relevant products for your query.,,"The answer correctly states that there are no relevant products found, which is faithful to the absence of source products, but it is completely irrelevant to the user's request for stylish sneakers.",
+21,exact_lookup,Lenovo Tab M10 Plus,This query tests for a specific product lookup.,3859.0,1.0,False,True,False,True,1.0,1.0,False,"• Lenovo Tab M10 Plus  
+Affordable tablet with vibrant display and solid battery life.",Lenovo Tab M10 Plus,"The answer directly recommends the Lenovo Tab M10 Plus, which matches the query and accurately describes its features based on the source product.",
+22,off_topic,what is the capital of Bangladesh?,Should be blocked by intent gate; answer should be off-topic message,688.0,1.0,False,True,False,True,0.0,0.0,True,I can only help with product search.,,The answer does not address the query about the capital of Bangladesh and provides no relevant information.,
+23,off_topic,tell me a joke,Should be blocked by intent gate; answer should be off-topic message,16.0,1.0,False,True,False,True,0.0,1.0,True,I can only help with product search.,,"The answer is completely irrelevant to the query as it does not provide a joke, but it is faithful in stating the system's limitation regarding product search.",
+24,feature_search,Does the Corsair K70 RGB have customizable RGB lighting?,This query tests the search for a specific feature of a product.,4360.0,0.0,False,True,False,True,0.0,0.0,False,I couldn't find any relevant products for your query.,,"The answer does not provide any information about the Corsair K70 RGB or its features, making it completely irrelevant and unfaithful to the query.",
+25,off_topic,good morning,Should be blocked by intent gate; answer should be off-topic message,0.0,1.0,False,True,False,True,0.0,1.0,True,I can only help with product search.,,"The answer is completely irrelevant to the query as there are no products to recommend, but it accurately states the system's limitation.",
+26,price_filter,Show me smartphones under $200,This query tests the price filtering for smartphones.,3781.0,1.0,False,True,False,True,1.0,1.0,False,"• Xiaomi Redmi Note 12  
+Affordable smartphone with good performance and battery life.",Xiaomi Redmi Note 12,"The answer correctly identifies the Xiaomi Redmi Note 12, which is the only relevant product under $200, and all claims about its affordability and performance are supported by the source.",
+27,feature_search,Does the L'Oreal Paris Revitalift Serum have hyaluronic acid in it?,This query tests the user's interest in a specific ingredient feature of the serum.,3172.0,0.0,False,True,False,True,0.0,0.0,False,I couldn't find any relevant products for your query.,,The answer is completely irrelevant as it does not address the user's query about the L'Oreal Paris Revitalift Serum and provides no information or products.,
+28,exact_lookup,Sony X80L 50 inch TV,This query tests for an exact product name lookup.,4485.0,1.0,False,True,False,True,1.0,1.0,False,"• Sony X80L 50 inch  
+Matches the exact model and size requested.",Sony X80L 50 inch,"The answer directly matches the exact product requested in the query, and all claims are supported by the source product.",
+29,price_filter,Show me shoes under 250 taka,This query tests the price filter functionality.,4344.0,0.0,False,True,False,True,0.0,1.0,False,No shoes under 250 taka available.,Nike Metcon 9,"The answer is completely irrelevant as it fails to mention the available product, which is under 250 taka, but it accurately states that there are no other options available.",
+30,off_topic,explain blockchain to me,Should be blocked by intent gate; answer should be off-topic message,0.0,1.0,False,True,False,True,0.0,1.0,True,I can only help with product search.,,"The answer is completely irrelevant to the query about explaining blockchain, but it accurately states the system's limitation in providing explanations.",
+31,feature_search,Does the HP EliteBook 840 have a backlit keyboard?,This query tests whether the user is looking for a specific feature in the product.,3141.0,0.0,False,True,False,True,0.0,1.0,False,I couldn't find any relevant products for your query.,,"The answer correctly states that there are no relevant products found, but since the query is about a specific product, the relevance score is zero due to the lack of information.",
+32,recommendation,Need a good smartphone for gaming and multimedia under $900.,This query tests the recommendation intent by describing a use case.,4468.0,1.0,False,True,False,True,1.0,1.0,False,"• RedMagic 9S Pro  
+Great for competitive gaming and multimedia.  
+
+• Lenovo Legion Y90  
+Optimized for esports and immersive multimedia experience.  
+
+• Black Shark 5 Pro  
+Designed for competitive gaming with strong multimedia features.  
+
+• POCO F7 Pro  
+Affordable flagship with excellent gaming ","RedMagic 9S Pro, Lenovo Legion Y90, Black Shark 5 Pro, POCO F7 Pro, Vivo Vivo Y100","The answer recommends all the relevant products from the source list that fit the user's criteria for gaming and multimedia under $900, and all claims about the products are supported by the source products.",
+33,exact_lookup,Corsair K70 RGB Keyboard,This query tests the user's intent to find a specific product by name.,4657.0,1.0,False,True,False,True,1.0,1.0,False,• Corsair K70 RGB Keyboard,Corsair K70 RGB Keyboard,The answer directly recommends the exact product that matches the user query.,
+34,exact_lookup,Sony WH-CH720N,This query tests the user's intent to find a specific product by name.,4500.0,1.0,False,True,False,True,1.0,1.0,False,"• Sony WH-CH720N  
+Reason: Premium Sony wireless audio with exceptional sound quality.",Sony WH-CH720N,The answer correctly identifies the Sony WH-CH720N and provides a claim about its quality that is supported by the source product.,
+35,recommendation,"Looking for a fun gift for a 10-year-old boy, any suggestions?",This query tests the recommendation intent by describing a use case for a toy.,5516.0,0.0,False,True,False,True,1.0,1.0,False,"• Mattel Hot Wheels Ultimate Garage  
+Fun and engaging for ages 8 and up.",Mattel Hot Wheels Ultimate Garage,The answer recommends the exact product from the source that is suitable for a 10-year-old boy and accurately describes it as fun and engaging.,
+36,recommendation,Looking for a face serum to reduce wrinkles and hydrate my skin,This query tests the recommendation intent for a skincare product.,5109.0,1.0,False,True,False,True,1.0,1.0,False,"• L'Oreal Paris Revitalift Serum  
+Hydrates skin and reduces fine lines.  
+
+• Neutrogena Rapid Wrinkle Repair Serum  
+Visible wrinkle reduction with hydration.","L'Oreal Paris Revitalift Serum, GlowCare 20% Vitamin C Serum for Face with Hyaluronic Acid & Vitamin E, Anti-Aging Brightening Serum, Neutrogena Rapid Wrinkle Repair Serum, Neutrogena Hydro Boost Water Gel, Nivea Men Active Energy Face Wash","The answer recommends the correct products that address the user's query about reducing wrinkles and hydrating the skin, and all claims made are supported by the source products.",
+37,recommendation,Looking for a smartwatch to track my running better.,This query tests the recommendation intent for a running smartwatch.,5422.0,1.0,True,True,False,True,1.0,1.0,False,"• Garmin Forerunner 255  
+Advanced GPS running smartwatch for serious runners.  
+
+• Huawei Watch GT 3 Pro  
+Sports-focused watch designed for runners and athletes.","Fitbit Luxe, Garmin Forerunner 255, Samsung Galaxy Fit 3, Samsung Galaxy Watch 6, Huawei Watch GT 3 Pro","The answer recommends the Garmin Forerunner 255 and Huawei Watch GT 3 Pro, both of which are relevant for tracking running, and all claims about their features are supported by the source products.",
+38,price_filter,Show me smartphones under $1200,This query tests a price filter for smartphones.,4609.0,0.0,False,True,False,True,1.0,1.0,False,"• Samsung Galaxy S25  
+• Realme Realme Narzo 60  
+• Xiaomi Redmi Note 12  
+• Infinix Infinix Zero 30","Samsung Galaxy S25, ASUS ROG Phone 9 Pro, Realme Realme Narzo 60, Xiaomi Redmi Note 12, Infinix Infinix Zero 30",The answer includes only smartphones that are under $1200 and all claims are supported by the source products.,
+39,off_topic,hi there,Should be blocked by intent gate; answer should be off-topic message,0.0,1.0,False,True,False,True,0.0,1.0,True,I can only help with product search.,,The answer is completely irrelevant to the query as there are no products to recommend.,
+40,off_topic,what is ChatGPT?,Should be blocked by intent gate; answer should be off-topic message,0.0,1.0,False,True,False,True,0.0,1.0,True,I can only help with product search.,,"The answer is completely irrelevant to the query about ChatGPT, but it accurately states the system's limitation.",
+41,browse,Show me all cameras available,This query tests the browsing intent for the camera category.,4625.0,1.0,False,True,False,True,1.0,1.0,False,"• Sony Alpha ZV-E10  
+• GoPro Hero 10 Black  
+• Canon EOS 90D  
+• Sony RX100 VII  
+• Nikon Coolpix P950","Sony Alpha ZV-E10, GoPro Hero 10 Black, Canon EOS 90D, Sony RX100 VII, Nikon Coolpix P950","The answer includes all the cameras listed in the source products, making it both relevant and faithful.",
+42,price_filter,Show me smart home devices under $200,This query tests the price filtering for smart home products.,5016.0,0.0,False,False,False,True,1.0,1.0,False,"• Amazon Echo Dot (5th Gen)  
+• Amazon Echo Show 8  
+• Amazon Echo Pop  
+• Google Nest Cam Outdoor  
+• Philips Hue Play HDMI Sync Box","Amazon Echo Dot (5th Gen), Amazon Echo Show 8, Amazon Echo Pop, Google Nest Cam Outdoor, Philips Hue Play HDMI Sync Box",The answer includes all the relevant smart home devices under $200 from the source products without any inaccuracies.,
+43,comparison,Razer Kraken V3 vs Neutrogena Oil-Free Acne Wash,This query tests the user's intent to compare two different products from distinct categories.,4796.0,1.0,True,True,False,True,1.0,1.0,False,"• Razer Kraken V3  
+- Versatile peripheral for work and gaming setups.  
+• Neutrogena Oil-Free Acne Wash  
+- Affordable acne wash with salon-quality results.","Neutrogena Oil-Free Acne Wash, Nivea Men Active Energy Face Wash, Razer Kraken V3, Neutrogena Hydro Boost Water Gel, Neutrogena Rapid Wrinkle Repair Serum","The answer correctly identifies and describes both the Razer Kraken V3 and Neutrogena Oil-Free Acne Wash, which are the exact products mentioned in the query.",
+44,browse,Show me all the laptops available,This query tests the browse intent to see all laptops in the category.,4828.0,1.0,False,True,False,True,0.7,0.7,False,"• HP EliteBook 840  
+• Dell Inspiron 14 5430  
+• HP ProBook 450 G10  
+• ASUS VivoBook 14 X1404ZA  
+• Dell XPS 15 Laptop","HP EliteBook 840, Dell Inspiron 14 5430, HP ProBook 450 G10, ASUS VivoBook 14 X1404ZA, Dell XPS 15 Laptop","The answer includes most of the relevant laptops but incorrectly lists the Dell XPS 15 Laptop, which is categorized as Electronics rather than a Laptop.",
+45,price_filter,Show me shoes under 150 dollars,This query tests the price filtering intent.,5422.0,0.0,True,True,False,True,1.0,1.0,False,"• Nike Air Zoom Pegasus 40  
+Reason: Priced under $150, suitable for running.
+
+• Nike Air Max 90 (priced $94.31)  
+Reason: Affordable, comfortable for all-day wear.","Nike Air Zoom Pegasus 40, Nike Air Max 90, Nike Air Max 90",The answer includes both relevant products that are under $150 and accurately reflects their details from the source products.,
+46,recommendation,Looking for a good smartphone for photography under 900,This query tests the recommendation intent for a smartphone based on a specific need.,4281.0,1.0,True,True,False,True,1.0,1.0,False,"• Infinix Infinix Smart 7  
+Good camera performance and premium build quality.  
+
+• Xiaomi Mi 13T  
+Reliable with smooth display and good photography.  
+
+• Xiaomi Redmi Note 12  
+Reliable mid-range phone with good camera.","Infinix Infinix Smart 7, Xiaomi Mi 13T, Xiaomi Redmi Note 12","The answer recommends all the relevant products for the query and accurately describes their photography capabilities, fully supported by the source products.",
+47,browse,Show me all bags available,This query tests the ability to retrieve all products in the Bags category.,4250.0,1.0,False,True,False,True,1.0,1.0,False,"• Targus CityLite Pro Backpack  
+• Osprey Farpoint 40 Travel Pack  
+• Osprey Talon 22  
+• The North Face Surge Backpack  
+• The North Face Jester Backpack","Targus CityLite Pro Backpack, Osprey Farpoint 40 Travel Pack, Osprey Talon 22, The North Face Surge Backpack, The North Face Jester Backpack","The answer includes all the bags listed in the source products, making it both relevant and faithful to the provided context.",
+48,exact_lookup,Samsonite Crossover 15.6 Backpack,This query tests the exact_lookup intent for a specific product.,4891.0,1.0,False,True,False,True,1.0,1.0,False,"• Samsonite Crossover 15.6 Backpack  
+Durable bag with dedicated laptop compartment and organizer pockets.","Samsonite Crossover 15.6 Backpack, Samsonite Guardit 2.0 Laptop Backpack",The answer correctly identifies the exact product requested in the query and provides accurate details that are supported by the source product.,
+49,feature_search,Does the LG UHD UR80 65 inch have HDR support?,This query tests the search for a specific feature in the television.,4015.0,1.0,False,True,False,True,1.0,1.0,False,"• LG UHD UR80 65 inch  
+Reason: Includes HDR10 support.",LG UHD UR80 65 inch,"The answer directly addresses the query by confirming that the LG UHD UR80 65 inch has HDR support, which is supported by the source product.",
+50,recommendation,Looking for a good pair of shoes for daily walking and comfort,This query tests for a recommendation based on specific use case needs.,4594.0,1.0,True,True,False,True,1.0,1.0,False,"• Nike Air Max 90  
+Comfortable shoes engineered for all-day wear.  
+
+• Skechers Go Walk 6  
+Stylish sneakers blending iconic design with modern comfort.","Nike Air Max 90, Skechers Go Walk 6, Puma Velocity Nitro 2","The answer recommends the Nike Air Max 90 and Skechers Go Walk 6, both of which are suitable for daily walking and comfort, and all claims about the products are supported by the source products.",
+51,comparison,LEGO Technic BMW M 1000 RR vs Samsung Galaxy Tab A9,This query tests the user's intent to compare two specific products.,3250.0,0.0,False,False,False,True,0.0,1.0,False,I couldn't find any relevant products for your query.,,"The answer correctly states that there are no relevant products for the query, thus being faithful to the lack of source products.",
+52,feature_search,Does the KitchenAid Food Processor have a slicing attachment?,This query tests for a specific feature of the KitchenAid food processor.,5375.0,1.0,False,True,False,True,1.0,1.0,False,"• KitchenAid Food Processor KFP0930  
+No mention of slicing attachment in product details.",KitchenAid Food Processor KFP0930,The answer correctly identifies the KitchenAid Food Processor KFP0930 and accurately states that there is no mention of a slicing attachment in the product details.,
+53,off_topic,apni ke?,Should be blocked by intent gate; answer should be off-topic message,0.0,1.0,False,True,False,True,0.0,1.0,True,I can only help with product search.,,"The answer is completely irrelevant to the query as there are no products to recommend, but it accurately states the system's limitation.",
+54,feature_search,Does the Microsoft Xbox Rechargeable Battery support quick charging?,This query tests the search for a specific feature of a gaming accessory.,3063.0,0.0,False,True,False,True,0.0,1.0,False,I couldn't find any relevant products for your query.,,"The answer correctly states that there are no relevant products, but since there are no products to evaluate, the relevance score is zero while the faithfulness score is one for accurately reflecting the lack of information.",
+55,price_filter,Show me products under $100,This query tests the price filtering functionality.,5703.0,0.0,False,True,False,True,1.0,1.0,False,"• Maybelline Instant Age Rewind  
+• Nivea Men Active Energy Face Wash  
+• L'Oreal Elvive Extraordinary Oil  
+• Neutrogena Ultra Sheer Sunscreen SPF100","Maybelline Instant Age Rewind, Nivea Men Active Energy Face Wash, L'Oreal Elvive Extraordinary Oil, Neutrogena Ultra Sheer Sunscreen SPF100","The answer includes all products listed in the source that are under $100, and all claims about the products are supported by the source information.",
+56,feature_search,Does the Maybelline Sky High Mascara give volume to lashes?,This query tests the user's interest in a specific feature of the mascara.,4844.0,1.0,True,True,False,True,0.7,0.7,False,"• Maybelline Sky High Mascara  
+Reason: Offers salon-quality beauty results.",Maybelline Sky High Mascara,"The answer mentions the Maybelline Sky High Mascara, which is relevant to the query, but it does not specifically address the volume aspect of the mascara's performance.",
+57,exact_lookup,Garmin Lily 2 watch,This query tests for an exact product lookup.,5046.0,1.0,False,True,False,True,1.0,1.0,False,"• Garmin Lily 2  
+Accurate performance tracking for runners and athletes.",Garmin Lily 2,"The answer correctly identifies the Garmin Lily 2 watch and accurately describes its purpose, fully aligning with the source product.",
+58,price_filter,show me smartwatches under $400,This query tests for price filtering based on product prices.,5000.0,0.0,True,True,False,True,1.0,1.0,False,"• Apple Watch SE (2nd Gen)  
+Affordable, fitness tracking, heart rate monitoring.  
+
+• Samsung Galaxy Fit 3  
+Feature-rich, fitness and heart rate tracking.  
+
+• Garmin Forerunner 255  
+Advanced GPS running smartwatch, multi-sport support.  
+
+• Huawei Watch Ultimate  
+Sports-focused, accurate perfor","Apple Watch SE (2nd Gen), Samsung Galaxy Fit 3, Garmin Forerunner 255, Huawei Watch Ultimate",The answer includes all the relevant smartwatches under $400 from the source products and accurately describes their features without introducing unsupported claims.,
+59,price_filter,laptop under $1500,This query tests the user's intent to find a laptop within a specific price range.,4562.0,0.0,False,True,False,True,1.0,1.0,False,"• Dell Inspiron 14 5430  
+Reason: Priced under $1500, versatile for daily tasks.
+
+• HP ProBook 450 G10  
+Reason: Affordable, suitable for students and office work.
+
+• Acer Aspire 5 A515  
+Reason: Lightweight and portable, under $1500.","Dell Inspiron 14 5430, HP ProBook 450 G10, Acer Aspire 5 A515",The answer includes all the relevant products from the source that are under $1500 and accurately describes them based on the provided information.,
+60,recommendation,Looking for a tablet for watching movies and reading books at home.,This query tests the recommendation intent for a specific use case involving a tablet.,4781.0,1.0,False,True,False,True,1.0,1.0,False,"• Amazon Fire 7  
+Ideal for reading and media consumption at home.  
+
+• Samsung Galaxy Tab S9  
+Great for reading and media consumption at home.  
+
+• Samsung Galaxy Tab S9 FE  
+Suitable for reading and media consumption at home.  
+
+• Lenovo Tab M9  
+Good for reading and media consumption at home.","Amazon Fire 7, Samsung Galaxy Tab S9, Samsung Galaxy Tab S9 FE, Samsung Galaxy Tab A9, Lenovo Tab M9","The answer recommends all relevant products for the user's query about tablets for watching movies and reading books, and all claims are supported by the source products.",
+61,recommendation,"Looking for a lightweight bag for my travels, any suggestions?",This query tests for a recommendation based on travel needs.,4437.0,1.0,False,True,False,True,1.0,1.0,False,• Osprey Farpoint 40 Travel Pack - Lightweight and water resistant for travel.,"Osprey Farpoint 40 Travel Pack, Targus Mobile Elite Backpack","The answer recommends the Osprey Farpoint 40 Travel Pack, which is a relevant product for lightweight travel, and accurately describes its features based on the source.",
+62,off_topic,how are you?,Should be blocked by intent gate; answer should be off-topic message,0.0,1.0,False,True,False,True,0.0,1.0,True,I can only help with product search.,,"The answer is completely irrelevant to the query, but it accurately reflects the system's limitations.",
+63,recommendation,Looking for a durable basketball for my kids' practice,This query tests the recommendation intent type by describing a use case.,4406.0,1.0,True,True,False,True,1.0,1.0,False,"• Spalding Rookie Gear Youth Basketball  
+Durable, professional-grade for intense training.",Spalding Rookie Gear Youth Basketball,The answer recommends the exact product from the source that matches the user's query for a durable basketball for kids' practice.,
+64,recommendation,Need a comfy chair for long study sessions at home.,This query tests for a recommendation based on a use case.,5594.0,1.0,False,True,False,True,1.0,1.0,False,"• Herman Miller Embody Chair  
+Comfortable for long work or study sessions.  
+
+• IKEA Poang Armchair  
+Ergonomic and designed for long study sessions.  
+
+• Flexispot EC5 Ergonomic Chair  
+Designed for comfort during long work or study sessions.  
+
+• Steelcase Leap V2 Chair  
+Ergonomic for comfort du","Herman Miller Embody Chair, IKEA Poang Armchair, Flexispot EC5 Ergonomic Chair, Herman Miller Aeron Chair, Steelcase Leap V2 Chair","The answer recommends all relevant products for the query about comfy chairs for long study sessions, and all claims about the products' comfort and ergonomic design are supported by the source products.",
+65,availability,TCL C835 Mini LED 65 inch টিভি কি স্টকে আছে?,This query checks if a specific product is available in stock.,4703.0,1.0,False,True,False,True,1.0,1.0,False,"• TCL C835 Mini LED 65 inch
+
+Available product matching your query.",TCL C835 Mini LED 65 inch,"The answer directly mentions the exact product from the source, confirming its availability, which aligns perfectly with the user query.",
+66,availability,Is the Dell Inspiron 15 3520 available in stock?,This query tests the user's inquiry about the stock status of a specific product.,4047.0,1.0,False,True,False,True,1.0,1.0,False,"• Dell Inspiron 15 3520  
+Available product listed in the inventory.",Dell Inspiron 15 3520,"The answer directly addresses the query by confirming the availability of the Dell Inspiron 15 3520, which is supported by the source product.",
+67,off_topic,what time is it?,Should be blocked by intent gate; answer should be off-topic message,1141.0,1.0,False,True,False,True,0.0,1.0,True,I can only help with product search.,,"The answer is completely irrelevant to the query about the time, but it accurately states the system's limitation regarding product search.",
+68,off_topic,write a poem about rain,Should be blocked by intent gate; answer should be off-topic message,0.0,1.0,False,True,False,True,0.0,0.0,True,I can only help with product search.,,"The answer does not address the user's request for a poem about rain and instead states a limitation, making it completely irrelevant and unfaithful.",
+69,exact_lookup,Corsair K70 RGB Keyboard,This query tests for an exact product lookup based on the product name.,4078.0,1.0,False,True,False,True,1.0,1.0,False,• Corsair K70 RGB Keyboard,Corsair K70 RGB Keyboard,"The answer recommends the exact product that matches the user query, and all claims are supported by the source product.",
+70,price_filter,Show me shoes under 300 taka,This query tests the price filter intent for footwear.,4562.0,0.0,False,False,False,True,0.0,0.0,False,No shoes under 300 taka available.,"Nike Free Run 5.0, Nike Air Max 90",The answer is completely irrelevant as it fails to mention the available shoes under 300 taka from the source products.,
+71,off_topic,thanks for your help,Should be blocked by intent gate; answer should be off-topic message,0.0,1.0,False,True,False,True,0.0,1.0,True,I can only help with product search.,,The answer is completely irrelevant to the query as it does not address any specific products or provide useful information.,
+72,comparison,Should I get the Flexispot E7Q desk or the Breville Barista Express?,This query tests the user's intent to compare two different product types.,5063.0,0.5,False,True,False,True,0.7,1.0,False,"• Flexispot E7Q Quad Motor Desk  
+Suitable for home offices and compact living spaces.",Flexispot E7Q Quad Motor Desk,"The answer correctly identifies the Flexispot E7Q desk as a relevant product but fails to address the Breville Barista Express, which is part of the user's query.",
+73,feature_search,Does the Nike React Infinity Run have good arch support?,This query tests the user's interest in a specific feature of the shoe.,4812.0,1.0,False,True,False,True,1.0,0.4,False,"• Nike React Infinity Run  
+Reason: Includes GOwalk arch support.",Nike React Infinity Run,"The answer correctly identifies the Nike React Infinity Run but incorrectly mentions 'GOwalk arch support,' which is not supported by the source product.",
+74,off_topic,what is machine learning?,Should be blocked by intent gate; answer should be off-topic message,687.0,1.0,False,True,False,True,0.0,0.0,True,I can only help with product search.,,The answer does not address the query about machine learning and provides no relevant information.,
+75,feature_search,Does the Google Nest Cam Outdoor have night vision features?,This query tests for specific feature inquiries related to a smart home product.,3672.0,0.0,False,True,False,True,0.0,0.0,False,I couldn't find any relevant products for your query.,,The answer is completely irrelevant as it does not address the user's query about the Google Nest Cam Outdoor and lacks any supporting information.,
+76,recommendation,Looking for a sturdy bag for daily commuting and laptop storage,This query tests the recommendation intent for a commuter bag.,5250.0,1.0,False,True,False,True,1.0,1.0,False,"• Targus Mobile Elite Backpack  
+Sturdy, designed for daily commuters with laptop compartment.
+
+• The North Face Surge Backpack  
+Durable, ideal for daily commuting and laptop storage.
+
+• Samsonite Crossover 15.6 Backpack  
+Durable, suitable for daily commuting with laptop compartment.
+
+• Osprey Str","Targus Mobile Elite Backpack, The North Face Surge Backpack, Samsonite Crossover 15.6 Backpack, Osprey Stratos 24, The North Face Borealis Backpack","The answer recommends all relevant products for the query and accurately describes their suitability for daily commuting and laptop storage, fully supported by the source products.",
+77,recommendation,Need a good mascara for a natural look to wear daily!,This query tests the recommendation intent by describing a use case for mascara.,3250.0,0.0,False,True,False,True,0.0,1.0,False,I couldn't find any relevant products for your query.,,"The answer correctly states that there are no relevant products available, which is faithful to the absence of source products.",
+78,feature_search,Does the Fitbit Charge 6 have heart rate monitoring?,This query tests the search for a specific feature of the Fitbit Charge 6.,4734.0,1.0,False,True,False,True,1.0,1.0,False,"• Fitbit Charge 6  
+Has heart rate monitoring.","Fitbit Charge 6, Fitbit Luxe, Fitbit Sense 2, Fitbit Versa 4, Fitbit Inspire 3","The answer directly addresses the query about the Fitbit Charge 6 and confirms it has heart rate monitoring, which is supported by the source product.",
+79,comparison,How does the Huawei Watch GT 4 compare to the Panasonic Bread Maker?,This query tests the user's interest in comparing two unrelated products.,3687.0,0.0,False,False,False,True,0.0,1.0,False,I couldn't find any relevant products for your query.,,"The answer correctly states that there are no relevant products, which is faithful to the absence of source products, but it is completely irrelevant to the user's query.",
+80,recommendation,Looking for a good serum for reducing fine lines and wrinkles.,This query tests the recommendation intent for a skincare product.,5204.0,1.0,False,True,False,True,1.0,1.0,False,"• L'Oreal Paris Revitalift Serum  
+Reduces fine lines with daily use.  
+• Neutrogena Rapid Wrinkle Repair Serum  
+Effective for visible wrinkle reduction.","L'Oreal Paris Revitalift Serum, Neutrogena Rapid Wrinkle Repair Serum, GlowCare 20% Vitamin C Serum for Face with Hyaluronic Acid & Vitamin E, Anti-Aging Brightening Serum","The answer recommends the exact products from the source that are relevant to reducing fine lines and wrinkles, and all claims made about the products are supported by the source information.",
+81,recommendation,Looking for a smartwatch to track my workouts and heart rate.,This query tests the recommendation intent for a fitness tracking watch.,5640.0,1.0,False,True,False,True,1.0,1.0,False,"• Apple Watch SE (2nd Gen)  
+Tracks workouts and heart rate monitoring.  
+
+• Fitbit Luxe  
+Tracks fitness metrics and heart rate.  
+
+• Garmin Venu 3  
+Tracks fitness metrics and heart rate.  
+
+• Samsung Galaxy Fit 3  
+Tracks fitness metrics and heart rate.  
+
+• Samsung Galaxy Watch 6  
+Tracks fitnes","Apple Watch SE (2nd Gen), Fitbit Luxe, Garmin Venu 3, Samsung Galaxy Fit 3, Samsung Galaxy Watch 6","The answer recommends all relevant smartwatches that track workouts and heart rate, and all claims about their capabilities are supported by the source products.",
+82,browse,Show me all sports equipment available,This query tests the browsing intent for sports category products.,4218.0,1.0,False,True,False,True,1.0,1.0,False,"• Decathlon Kipsta Football Size 5  
+• Wilson Pro Staff Tennis Racket  
+• Spalding Zi/O Excel Indoor Outdoor Ball  
+• Wilson Ultra 100L Badminton Racket  
+• Yonex Duora 10","Decathlon Kipsta Football Size 5, Wilson Pro Staff Tennis Racket, Spalding Zi/O Excel Indoor Outdoor Ball, Wilson Ultra 100L Badminton Racket, Yonex Duora 10","The answer includes all the products from the source that fall under the category of sports equipment, and all claims are supported by the source products.",
+83,price_filter,Show me products under 300 taka,This query tests the price filtering capability based on product prices.,3203.0,0.0,False,False,False,True,1.0,1.0,False,No products found within your budget. Try to increase your budget or search for a different category.,,"The answer accurately reflects the absence of products under 300 taka, which is consistent with the provided source products.",
+84,feature_search,Does the Xbox headset have noise cancellation?,This query tests for a specific feature of the gaming headset.,2844.0,0.0,False,True,False,True,0.0,1.0,False,I couldn't find any relevant products for your query.,,"The answer correctly states that there are no relevant products available, thus it is completely irrelevant to the query but faithful in its claim about the lack of products.",
+85,recommendation,Looking for a fun gift for my kid's birthday party.,This query tests for a recommendation based on use case.,3829.0,1.0,False,True,False,True,0.0,1.0,False,I couldn't find any relevant products for your query.,,"The answer is completely irrelevant as there are no products recommended, but it accurately reflects the lack of available sources.",
+86,recommendation,"Need a laptop for coding and design work, any recommendations?",This query tests the recommendation intent for laptops suitable for professionals.,6000.0,1.0,False,True,False,True,1.0,1.0,False,"• Acer Swift Go 14 - Reliable all-day computing for developers and designers  
+• Dell Inspiron 15 3520 - Suitable for developers and designers  
+• HP EliteBook 840 - Powerful for developers and designers  
+• Dell G15 Gaming - Suitable for developers and designers  
+• Dell Latitude 5540 - Reliable al","Acer Swift Go 14, Dell Inspiron 15 3520, HP EliteBook 840, Dell G15 Gaming, Dell Latitude 5540","The answer recommends all relevant laptops for coding and design work, and each claim about the products is supported by the source products.",
+87,browse,show me all smartphones,This query tests the browsing capability for smartphone products.,5547.0,1.0,False,True,False,True,1.0,1.0,False,"• Xiaomi Redmi Note 12  
+• Tecno Tecno Spark 20  
+• Samsung Galaxy S25  
+• Samsung Galaxy Z Fold7  
+• Xiaomi Poco X5","Xiaomi Redmi Note 12, Tecno Tecno Spark 20, Samsung Galaxy S25, Samsung Galaxy Z Fold7, Xiaomi Poco X5",The answer includes all the smartphones listed in the source products without any omissions or inaccuracies.,
+88,price_filter,Show me products under 300 Taka,This query tests the price filter intent.,2781.0,0.0,False,False,False,True,1.0,1.0,False,No products found within your budget. Try to increase your budget or search for a different category.,,"The answer accurately reflects the absence of products under 300 Taka, which is consistent with the provided source context.",
+89,exact_lookup,GoPro Hero 11 Mini,This query tests if the search can match an exact product name.,4625.0,1.0,False,True,False,True,1.0,1.0,False,"• GoPro Hero 11 Mini  
+Perfect for beginners and enthusiasts stepping up photography.",GoPro Hero 11 Mini,"The answer directly recommends the GoPro Hero 11 Mini, which is the exact product from the source, and all claims about its suitability for beginners and enthusiasts are supported by the context.",
+90,off_topic,bye bye,Should be blocked by intent gate; answer should be off-topic message,0.0,1.0,False,True,False,True,0.0,1.0,True,I can only help with product search.,,"The answer is completely irrelevant to the query as there are no products to recommend, but it accurately states the system's limitation.",
+91,recommendation,"Need a good shoe for gym and casual wear, any recommendations?",This query tests the ability to suggest products for specific use cases.,4859.0,1.0,False,True,False,True,1.0,1.0,False,"• Nike Air Force 1 - Suitable for gym and casual wear  
+• New Balance 574 Classic - Versatile for gym and casual use  
+• Skechers Max Cushioning Elite - Good for gym workouts and casual wear  
+• Nike Dunk Low - Suitable for gym and casual use","Nike Air Force 1, New Balance 574 Classic, Skechers Max Cushioning Elite, Nike Dunk Low, Puma Velocity Nitro 2","The answer recommends products that are all suitable for both gym and casual wear, and every claim made about the products is supported by the source products.",
+92,comparison,Should I get the Hasbro Nerf Elite 2.0 Commander or the TCL C835 Mini LED 65 inch?,This query tests the comparison intent by asking about two different product types.,3813.0,0.0,False,False,False,True,0.0,0.0,False,I couldn't find any relevant products for your query.,,"The answer indicates that no relevant products were found, which is accurate given the absence of source products, but it does not provide any recommendations or information about the queried items.",
+93,availability,Is the Yonex Voltric Z-Force II available in stock?,This query tests the user's inquiry about product availability.,4219.0,1.0,False,True,False,True,1.0,1.0,False,"• Yonex Voltric Z-Force II  
+Available product listed with details.",Yonex Voltric Z-Force II,"The answer directly mentions the Yonex Voltric Z-Force II, which is the exact product in the source, confirming its availability.",
+94,feature_search,Does the Logitech G305 have customizable buttons?,This query tests the search for a specific feature of a product.,4813.0,1.0,False,True,False,True,1.0,1.0,False,"• Logitech G305 Wireless Mouse  
+Reason: Customization mentioned in description.","Logitech G305 Wireless Mouse, Logitech G502 X Plus, Logitech G Pro X Headset, Logitech G915 TKL Keyboard, Logitech MX Keys Mini Keyboard",The answer correctly identifies the Logitech G305 as the relevant product and supports the claim of customizable buttons based on the source products.,
+95,feature_search,Does the Fitbit Charge 6 have heart rate monitoring?,This query tests for a specific feature of the Fitbit Charge 6.,3735.0,1.0,False,True,False,True,1.0,1.0,False,"• Fitbit Charge 6  
+Has heart rate monitoring.","Fitbit Charge 6, Fitbit Luxe, Fitbit Sense 2, Fitbit Versa 4, Fitbit Inspire 3","The answer directly addresses the query about the Fitbit Charge 6 and correctly states that it has heart rate monitoring, fully supported by the source product.",
+96,availability,Is the Samsung Galaxy Tab A9 available in stock?,This query tests the availability of a specific product.,5141.0,1.0,False,True,False,True,1.0,1.0,False,"• Samsung Galaxy Tab A9  
+Reason: Product details available, implying stock presence.",Samsung Galaxy Tab A9,"The answer directly mentions the Samsung Galaxy Tab A9, which is the exact product in the source, and implies its availability based on the provided details.",
+97,browse,Show me all furniture products,This query tests the browsing intent for furniture category.,5891.0,1.0,False,True,False,True,1.0,1.0,False,"• Flexispot Comhar Pro Q8  
+• Herman Miller Embody Chair  
+• IKEA Poang Armchair  
+• IKEA Malm Dresser  
+• Steelcase Amia Chair","Flexispot Comhar Pro Q8, Herman Miller Embody Chair, IKEA Poang Armchair, IKEA Malm Dresser, Steelcase Amia Chair",The answer includes all the relevant furniture products from the source list without any omissions or inaccuracies.,
+98,comparison,Should I get the Samsung Galaxy Watch 5 Pro or the Flexispot E7Q desk?,This query tests the user's intent to compare two different product categories.,4031.0,0.0,False,False,False,True,0.0,1.0,False,I couldn't find any relevant products for your query.,,"The answer correctly states that there are no relevant products found, which is faithful to the absence of source products.",
+99,price_filter,Show me products under 100 dollars,This query tests for filtering products based on price constraints.,4016.0,0.0,False,True,False,True,1.0,1.0,False,"• Maybelline Instant Age Rewind  
+• Nivea Men Active Energy Face Wash  
+• Neutrogena Ultra Sheer Sunscreen SPF100","Maybelline Instant Age Rewind, Nivea Men Active Energy Face Wash, Neutrogena Ultra Sheer Sunscreen SPF100","The answer includes all products listed in the source that are under 100 dollars, and all claims are supported by the source products.",

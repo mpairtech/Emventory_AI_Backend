@@ -39,7 +39,15 @@ _MAX_PRICE_PENALTY = 0.5
 
 _INTENT_NOTES: dict[str, str] = {
     "exact_lookup":   "Exact model/brand match is most important.",
-    "recommendation": "Overall fit for the user's need is most important.",
+    "recommendation": (
+        "The user wants a product specifically suited to their stated use case. "
+        "Identify the use case from the query (e.g. 'gaming', 'hiking', 'professional photography', 'cooking'). "
+        "Score 0.8–1.0 ONLY if the product's name, description, or specifications explicitly indicate "
+        "it is designed or marketed for that exact use case. "
+        "Score 0.3–0.5 for generic products that share some specs but are NOT purpose-built for the use case. "
+        "Score 0.0–0.2 for products with no connection to the stated use case. "
+        "Never reward shared specs alone — a generic product with good RAM is NOT a gaming product."
+    ),
     "comparison":     "Products that match the comparison criteria are most relevant.",
     "price_filter":   "Price range fit is critical — penalize out-of-range products.",
     "availability":   "Stock status is important.",
@@ -49,17 +57,30 @@ _INTENT_NOTES: dict[str, str] = {
 }
 
 _RERANK_PROMPT_TEMPLATE = """\
-You are a product search relevance judge.
+You are a product search relevance judge for an e-commerce platform.
 
 User query: "{query}"
 Scoring note: {intent_note}
 
 Rate each product's relevance to the query on a scale of 0.0 to 1.0:
-- 1.0 = Perfect match, exactly what the user wants
-- 0.7 = Good match, mostly relevant
-- 0.4 = Partial match, somewhat relevant
-- 0.1 = Poor match, barely relevant
-- 0.0 = Irrelevant, completely unrelated
+- 1.0 = Perfect match — explicitly designed or marketed for the user's stated need
+- 0.7 = Good match — clearly relevant with strong supporting evidence in name, description, or specs
+- 0.4 = Partial match — related category but NOT specifically designed for the stated use case
+- 0.1 = Weak match — barely relevant
+- 0.0 = Irrelevant — wrong category, or generic product with no explicit fit for stated need
+
+UNIVERSAL SPECIFICITY RULE:
+When the query expresses a specific use case, activity, profession, or purpose
+(examples: gaming, hiking, nursing, cooking, photography, travel, running, construction),
+apply this rule regardless of product category:
+  - The product MUST explicitly serve that use case in its name, description, or specifications.
+  - Shared specs alone do NOT qualify. Examples of what does NOT qualify:
+      * A generic smartphone with 120Hz is NOT a gaming phone unless marketed as one.
+      * A regular knife is NOT a chef knife unless described as professional/culinary.
+      * A standard backpack is NOT a hiking pack unless designed for trail use.
+      * A casual shoe is NOT a running shoe unless built for running.
+  - If NO product in the list explicitly serves the stated use case, all scores must be below 0.4.
+    Do NOT force a high score on the "closest" generic product.
 
 Products:
 {products_text}

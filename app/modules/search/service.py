@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache.cache_service import cache_service
 from app.core.exceptions import DatabaseError, ProductNotFoundError
-from app.core.llm.gemini import GeminiClient
+from app.core.llm.gemini import GeminiClient                                                                                                
 from app.core.llm.openai import OpenAIClient
 from app.core.vector.pgvector import VectorStore
 from app.db.models.vector import ProductVector
@@ -54,7 +54,7 @@ def _build_no_results_msg(
     if classification.budget_qualifier == "tight":
         return (
             "No products found within your budget. "
-            "Try relaxing your budget or search for a different category."
+            "Try to increase your budget or search for a different category."
         )
     if classification.price_max is not None:
         return f"No products found under {classification.price_max:.0f}."

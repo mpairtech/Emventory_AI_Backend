@@ -1,0 +1,79 @@
+{
+  "total_cases": 100,
+  "succeeded": 100,
+  "failed": 0,
+  "avg_relevance": 0.632,
+  "avg_faithfulness": 0.895,
+  "avg_products_found": 0.665,
+  "hallucination_rate": 0.09,
+  "off_topic_leak_rate": 0.0,
+  "budget_respected_rate": 1.0,
+  "order_correct_rate": 0.88,
+  "avg_latency_ms": 3901.41,
+  "by_intent": {
+    "off_topic": {
+      "count": 15,
+      "avg_relevance": 0.0,
+      "avg_faithfulness": 0.8,
+      "avg_products_found": 1.0,
+      "hallucination_rate": 0.0,
+      "avg_latency_ms": 218.8
+    },
+    "price_filter": {
+      "count": 15,
+      "avg_relevance": 0.867,
+      "avg_faithfulness": 0.933,
+      "avg_products_found": 0.067,
+      "hallucination_rate": 0.133,
+      "avg_latency_ms": 4701.0
+    },
+    "browse": {
+      "count": 10,
+      "avg_relevance": 0.97,
+      "avg_faithfulness": 0.97,
+      "avg_products_found": 1.0,
+      "hallucination_rate": 0.0,
+      "avg_latency_ms": 5303.1
+    },
+    "exact_lookup": {
+      "count": 10,
+      "avg_relevance": 1.0,
+      "avg_faithfulness": 1.0,
+      "avg_products_found": 1.0,
+      "hallucination_rate": 0.1,
+      "avg_latency_ms": 4500.0
+    },
+    "comparison": {
+      "count": 10,
+      "avg_relevance": 0.24,
+      "avg_faithfulness": 0.9,
+      "avg_products_found": 0.25,
+      "hallucination_rate": 0.1,
+      "avg_latency_ms": 3842.0
+    },
+    "availability": {
+      "count": 5,
+      "avg_relevance": 0.94,
+      "avg_faithfulness": 0.94,
+      "avg_products_found": 1.0,
+      "hallucination_rate": 0.0,
+      "avg_latency_ms": 4593.8
+    },
+    "recommendation": {
+      "count": 20,
+      "avg_relevance": 0.835,
+      "avg_faithfulness": 1.0,
+      "avg_products_found": 0.8,
+      "hallucination_rate": 0.2,
+      "avg_latency_ms": 4904.7
+    },
+    "feature_search": {
+      "count": 15,
+      "avg_relevance": 0.447,
+      "avg_faithfulness": 0.673,
+      "avg_products_found": 0.467,
+      "hallucination_rate": 0.067,
+      "avg_latency_ms": 3922.0
+    }
+  }
+}

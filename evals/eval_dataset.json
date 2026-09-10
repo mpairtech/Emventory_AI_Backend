@@ -1,0 +1,1462 @@
+{
+  "meta": {
+    "total_cases": 100,
+    "intent_counts": {
+      "off_topic": 15,
+      "price_filter": 15,
+      "browse": 10,
+      "exact_lookup": 10,
+      "comparison": 10,
+      "availability": 5,
+      "recommendation": 20,
+      "feature_search": 15
+    },
+    "product_count": 100,
+    "org_id_filter": "org_123"
+  },
+  "cases": [
+    {
+      "query": "kemon acho",
+      "intent": "off_topic",
+      "expected_products": [],
+      "expected_blocked": true,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [],
+      "notes": "Should be blocked by intent gate; answer should be off-topic message"
+    },
+    {
+      "query": "Show me products under $100",
+      "intent": "price_filter",
+      "expected_products": [
+        "Razer Kraken V3"
+      ],
+      "expected_blocked": false,
+      "price_max": 1209.989,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_388",
+        "prod_706",
+        "prod_173"
+      ],
+      "notes": "This query tests the price filtering intent."
+    },
+    {
+      "query": "Show me all computer peripherals available",
+      "intent": "browse",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_291",
+        "prod_343",
+        "prod_207"
+      ],
+      "notes": "This query tests the browsing intent for a specific category."
+    },
+    {
+      "query": "Beauty products gulo dekhte chai",
+      "intent": "browse",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_322",
+        "prod_179",
+        "prod_113"
+      ],
+      "notes": "This query tests the browsing intent for beauty category products."
+    },
+    {
+      "query": "Xiaomi Redmi Note 12",
+      "intent": "exact_lookup",
+      "expected_products": [
+        "Xiaomi Redmi Note 12"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_017"
+      ],
+      "notes": "This query tests the user's intent to find a specific product by name."
+    },
+    {
+      "query": "who invented the internet?",
+      "intent": "off_topic",
+      "expected_products": [],
+      "expected_blocked": true,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [],
+      "notes": "Should be blocked by intent gate; answer should be off-topic message"
+    },
+    {
+      "query": "Show me TVs under $1100",
+      "intent": "price_filter",
+      "expected_products": [
+        "LG UHD UR80 65 inch"
+      ],
+      "expected_blocked": false,
+      "price_max": 1147.564,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_261",
+        "prod_165",
+        "prod_100"
+      ],
+      "notes": "This query tests a price filtering intent for televisions."
+    },
+    {
+      "query": "Smartphone gulo dekhte chai",
+      "intent": "browse",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_702",
+        "prod_257",
+        "prod_102"
+      ],
+      "notes": "This query tests browsing all products in the smartphone category."
+    },
+    {
+      "query": "Show me products under 100 dollars",
+      "intent": "price_filter",
+      "expected_products": [
+        "Samsonite Guardit 2.0 Laptop Backpack",
+        "JBL Tune 125TWS"
+      ],
+      "expected_blocked": false,
+      "price_max": 300.75100000000003,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_312",
+        "prod_011",
+        "prod_025"
+      ],
+      "notes": "This query tests the price filter intent for budget products."
+    },
+    {
+      "query": "Should I get the Breville Smart Waffle Maker or the ASUS ROG Phone 9 Pro?",
+      "intent": "comparison",
+      "expected_products": [
+        "Breville Smart Waffle Maker",
+        "ASUS ROG Phone 9 Pro"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_117",
+        "prod_700"
+      ],
+      "notes": "This query tests the user's intent to compare two distinct products."
+    },
+    {
+      "query": "Is the Steelcase Amia Chair available in stock?",
+      "intent": "availability",
+      "expected_products": [
+        "Steelcase Amia Chair"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_190"
+      ],
+      "notes": "This query tests the availability of a specific product."
+    },
+    {
+      "query": "Looking for a good chair for my home office setup.",
+      "intent": "recommendation",
+      "expected_products": [
+        "Steelcase Amia Chair"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_190",
+        "prod_024",
+        "prod_209"
+      ],
+      "notes": "This query tests a recommendation for a product based on use case."
+    },
+    {
+      "query": "Should I get the Apple MacBook Air or the Amazfit GTS 4 Mini?",
+      "intent": "comparison",
+      "expected_products": [
+        "Apple MacBook Air 13-inch (M4, 2025)",
+        "Amazfit GTS 4 Mini"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_036",
+        "prod_304"
+      ],
+      "notes": "This query tests the comparison intent between a laptop and a smartwatch."
+    },
+    {
+      "query": "Amazfit GTS 4 Mini vs Breville Barista Express",
+      "intent": "comparison",
+      "expected_products": [
+        "Amazfit GTS 4 Mini",
+        "Breville Barista Express"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_304",
+        "prod_360"
+      ],
+      "notes": "This query tests the comparison intent between a smartwatch and a kitchen appliance."
+    },
+    {
+      "query": "JBL Tune 125TWS vs Vivo Vivo Y36",
+      "intent": "comparison",
+      "expected_products": [
+        "JBL Tune 125TWS",
+        "Vivo Vivo Y36"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_025",
+        "prod_257"
+      ],
+      "notes": "This query tests the comparison intent between an audio product and a smartphone."
+    },
+    {
+      "query": "Garmin Forerunner 255 smartwatch",
+      "intent": "exact_lookup",
+      "expected_products": [
+        "Garmin Forerunner 255"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_006"
+      ],
+      "notes": "This query tests the user's intent to find a specific product by name."
+    },
+    {
+      "query": "What type of cushioning does the Adidas Forum Low have?",
+      "intent": "feature_search",
+      "expected_products": [
+        "Adidas Forum Low"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_403",
+        "prod_305",
+        "prod_089"
+      ],
+      "notes": "This query tests for a specific feature of a product."
+    },
+    {
+      "query": "Need a gadget for quick breakfasts at home, any suggestions?",
+      "intent": "recommendation",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_055",
+        "prod_213",
+        "prod_117"
+      ],
+      "notes": "This query tests the recommendation intent for kitchen appliances."
+    },
+    {
+      "query": "Does the Microsoft Xbox Wireless Headset have noise cancellation feature?",
+      "intent": "feature_search",
+      "expected_products": [
+        "Microsoft Xbox Wireless Headset"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_264",
+        "prod_304",
+        "prod_059"
+      ],
+      "notes": "This query tests for a specific feature in a product."
+    },
+    {
+      "query": "Show me all smartphones available",
+      "intent": "browse",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_017"
+      ],
+      "notes": "This query tests the browsing intent for a category of products."
+    },
+    {
+      "query": "Looking for stylish sneakers for both running and casual wear.",
+      "intent": "recommendation",
+      "expected_products": [
+        "Nike React Infinity Run"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_395",
+        "prod_215",
+        "prod_706"
+      ],
+      "notes": "This query tests a recommendation based on multi-use footwear."
+    },
+    {
+      "query": "Lenovo Tab M10 Plus",
+      "intent": "exact_lookup",
+      "expected_products": [
+        "Lenovo Tab M10 Plus"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_045"
+      ],
+      "notes": "This query tests for a specific product lookup."
+    },
+    {
+      "query": "what is the capital of Bangladesh?",
+      "intent": "off_topic",
+      "expected_products": [],
+      "expected_blocked": true,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [],
+      "notes": "Should be blocked by intent gate; answer should be off-topic message"
+    },
+    {
+      "query": "tell me a joke",
+      "intent": "off_topic",
+      "expected_products": [],
+      "expected_blocked": true,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [],
+      "notes": "Should be blocked by intent gate; answer should be off-topic message"
+    },
+    {
+      "query": "Does the Corsair K70 RGB have customizable RGB lighting?",
+      "intent": "feature_search",
+      "expected_products": [
+        "Corsair K70 RGB Keyboard"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_343",
+        "prod_351",
+        "prod_235"
+      ],
+      "notes": "This query tests the search for a specific feature of a product."
+    },
+    {
+      "query": "good morning",
+      "intent": "off_topic",
+      "expected_products": [],
+      "expected_blocked": true,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [],
+      "notes": "Should be blocked by intent gate; answer should be off-topic message"
+    },
+    {
+      "query": "Show me smartphones under $200",
+      "intent": "price_filter",
+      "expected_products": [
+        "Xiaomi Redmi Note 12"
+      ],
+      "expected_blocked": false,
+      "price_max": 611.2700000000001,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_017",
+        "prod_165",
+        "prod_105"
+      ],
+      "notes": "This query tests the price filtering for smartphones."
+    },
+    {
+      "query": "Does the L'Oreal Paris Revitalift Serum have hyaluronic acid in it?",
+      "intent": "feature_search",
+      "expected_products": [
+        "L'Oreal Paris Revitalift Serum"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_022",
+        "prod_207",
+        "prod_312"
+      ],
+      "notes": "This query tests the user's interest in a specific ingredient feature of the serum."
+    },
+    {
+      "query": "Sony X80L 50 inch TV",
+      "intent": "exact_lookup",
+      "expected_products": [
+        "Sony X80L 50 inch"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_381"
+      ],
+      "notes": "This query tests for an exact product name lookup."
+    },
+    {
+      "query": "Show me shoes under 250 taka",
+      "intent": "price_filter",
+      "expected_products": [
+        "Skechers Max Cushioning Elite"
+      ],
+      "expected_blocked": false,
+      "price_max": 230.78000000000003,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_314",
+        "prod_154",
+        "prod_209"
+      ],
+      "notes": "This query tests the price filter functionality."
+    },
+    {
+      "query": "explain blockchain to me",
+      "intent": "off_topic",
+      "expected_products": [],
+      "expected_blocked": true,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [],
+      "notes": "Should be blocked by intent gate; answer should be off-topic message"
+    },
+    {
+      "query": "Does the HP EliteBook 840 have a backlit keyboard?",
+      "intent": "feature_search",
+      "expected_products": [
+        "HP EliteBook 840"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_222",
+        "prod_312",
+        "prod_252"
+      ],
+      "notes": "This query tests whether the user is looking for a specific feature in the product."
+    },
+    {
+      "query": "Need a good smartphone for gaming and multimedia under $900.",
+      "intent": "recommendation",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_102",
+        "prod_222",
+        "prod_700"
+      ],
+      "notes": "This query tests the recommendation intent by describing a use case."
+    },
+    {
+      "query": "Corsair K70 RGB Keyboard",
+      "intent": "exact_lookup",
+      "expected_products": [
+        "Corsair K70 RGB Keyboard"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_343"
+      ],
+      "notes": "This query tests the user's intent to find a specific product by name."
+    },
+    {
+      "query": "Sony WH-CH720N",
+      "intent": "exact_lookup",
+      "expected_products": [
+        "Sony WH-CH720N"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_293"
+      ],
+      "notes": "This query tests the user's intent to find a specific product by name."
+    },
+    {
+      "query": "Looking for a fun gift for a 10-year-old boy, any suggestions?",
+      "intent": "recommendation",
+      "expected_products": [
+        "LEGO Technic BMW M 1000 RR"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_315",
+        "prod_025",
+        "prod_358"
+      ],
+      "notes": "This query tests the recommendation intent by describing a use case for a toy."
+    },
+    {
+      "query": "Looking for a face serum to reduce wrinkles and hydrate my skin",
+      "intent": "recommendation",
+      "expected_products": [
+        "L'Oreal Paris Revitalift Serum"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_022",
+        "prod_181",
+        "prod_322"
+      ],
+      "notes": "This query tests the recommendation intent for a skincare product."
+    },
+    {
+      "query": "Looking for a smartwatch to track my running better.",
+      "intent": "recommendation",
+      "expected_products": [
+        "Garmin Forerunner 255"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_006",
+        "prod_235",
+        "prod_322"
+      ],
+      "notes": "This query tests the recommendation intent for a running smartwatch."
+    },
+    {
+      "query": "Show me smartphones under $1200",
+      "intent": "price_filter",
+      "expected_products": [
+        "Google Pixel 9 Pro"
+      ],
+      "expected_blocked": false,
+      "price_max": 1209.989,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_706",
+        "prod_214",
+        "prod_212"
+      ],
+      "notes": "This query tests a price filter for smartphones."
+    },
+    {
+      "query": "hi there",
+      "intent": "off_topic",
+      "expected_products": [],
+      "expected_blocked": true,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [],
+      "notes": "Should be blocked by intent gate; answer should be off-topic message"
+    },
+    {
+      "query": "what is ChatGPT?",
+      "intent": "off_topic",
+      "expected_products": [],
+      "expected_blocked": true,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [],
+      "notes": "Should be blocked by intent gate; answer should be off-topic message"
+    },
+    {
+      "query": "Show me all cameras available",
+      "intent": "browse",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_351",
+        "prod_038",
+        "prod_182"
+      ],
+      "notes": "This query tests the browsing intent for the camera category."
+    },
+    {
+      "query": "Show me smart home devices under $200",
+      "intent": "price_filter",
+      "expected_products": [
+        "Amazon Fire TV Stick 4K Max",
+        "Google Nest Doorbell"
+      ],
+      "expected_blocked": false,
+      "price_max": 1439.3390000000002,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_168",
+        "prod_213",
+        "prod_143"
+      ],
+      "notes": "This query tests the price filtering for smart home products."
+    },
+    {
+      "query": "Razer Kraken V3 vs Neutrogena Oil-Free Acne Wash",
+      "intent": "comparison",
+      "expected_products": [
+        "Razer Kraken V3",
+        "Neutrogena Oil-Free Acne Wash"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_388",
+        "prod_322"
+      ],
+      "notes": "This query tests the user's intent to compare two different products from distinct categories."
+    },
+    {
+      "query": "Show me all the laptops available",
+      "intent": "browse",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_222",
+        "prod_372",
+        "prod_129"
+      ],
+      "notes": "This query tests the browse intent to see all laptops in the category."
+    },
+    {
+      "query": "Show me shoes under 150 dollars",
+      "intent": "price_filter",
+      "expected_products": [
+        "Adidas Forum Low"
+      ],
+      "expected_blocked": false,
+      "price_max": 611.2700000000001,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_305",
+        "prod_105",
+        "prod_214"
+      ],
+      "notes": "This query tests the price filtering intent."
+    },
+    {
+      "query": "Looking for a good smartphone for photography under 900",
+      "intent": "recommendation",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_311",
+        "prod_102",
+        "prod_210"
+      ],
+      "notes": "This query tests the recommendation intent for a smartphone based on a specific need."
+    },
+    {
+      "query": "Show me all bags available",
+      "intent": "browse",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_044",
+        "prod_136",
+        "prod_062"
+      ],
+      "notes": "This query tests the ability to retrieve all products in the Bags category."
+    },
+    {
+      "query": "Samsonite Crossover 15.6 Backpack",
+      "intent": "exact_lookup",
+      "expected_products": [
+        "Samsonite Crossover 15.6 Backpack"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_214"
+      ],
+      "notes": "This query tests the exact_lookup intent for a specific product."
+    },
+    {
+      "query": "Does the LG UHD UR80 65 inch have HDR support?",
+      "intent": "feature_search",
+      "expected_products": [
+        "LG UHD UR80 65 inch"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_261",
+        "prod_289",
+        "prod_070"
+      ],
+      "notes": "This query tests the search for a specific feature in the television."
+    },
+    {
+      "query": "Looking for a good pair of shoes for daily walking and comfort",
+      "intent": "recommendation",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_183",
+        "prod_306",
+        "prod_252"
+      ],
+      "notes": "This query tests for a recommendation based on specific use case needs."
+    },
+    {
+      "query": "LEGO Technic BMW M 1000 RR vs Samsung Galaxy Tab A9",
+      "intent": "comparison",
+      "expected_products": [
+        "LEGO Technic BMW M 1000 RR",
+        "Samsung Galaxy Tab A9"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_315",
+        "prod_024"
+      ],
+      "notes": "This query tests the user's intent to compare two specific products."
+    },
+    {
+      "query": "Does the KitchenAid Food Processor have a slicing attachment?",
+      "intent": "feature_search",
+      "expected_products": [
+        "KitchenAid Food Processor KFP0930"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_275",
+        "prod_212",
+        "prod_036"
+      ],
+      "notes": "This query tests for a specific feature of the KitchenAid food processor."
+    },
+    {
+      "query": "apni ke?",
+      "intent": "off_topic",
+      "expected_products": [],
+      "expected_blocked": true,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [],
+      "notes": "Should be blocked by intent gate; answer should be off-topic message"
+    },
+    {
+      "query": "Does the Microsoft Xbox Rechargeable Battery support quick charging?",
+      "intent": "feature_search",
+      "expected_products": [
+        "Microsoft Xbox Rechargeable Battery"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_088",
+        "prod_017",
+        "prod_214"
+      ],
+      "notes": "This query tests the search for a specific feature of a gaming accessory."
+    },
+    {
+      "query": "Show me products under $100",
+      "intent": "price_filter",
+      "expected_products": [
+        "Samsonite Paradiver Duffle"
+      ],
+      "expected_blocked": false,
+      "price_max": 379.181,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_089",
+        "prod_317",
+        "prod_062"
+      ],
+      "notes": "This query tests the price filtering functionality."
+    },
+    {
+      "query": "Does the Maybelline Sky High Mascara give volume to lashes?",
+      "intent": "feature_search",
+      "expected_products": [
+        "Maybelline Sky High Mascara"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_179",
+        "prod_044",
+        "prod_182"
+      ],
+      "notes": "This query tests the user's interest in a specific feature of the mascara."
+    },
+    {
+      "query": "Garmin Lily 2 watch",
+      "intent": "exact_lookup",
+      "expected_products": [
+        "Garmin Lily 2"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_198"
+      ],
+      "notes": "This query tests for an exact product lookup."
+    },
+    {
+      "query": "show me smartwatches under $400",
+      "intent": "price_filter",
+      "expected_products": [
+        "Samsung Galaxy Watch 5 Pro"
+      ],
+      "expected_blocked": false,
+      "price_max": 827.255,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_067",
+        "prod_264",
+        "prod_181"
+      ],
+      "notes": "This query tests for price filtering based on product prices."
+    },
+    {
+      "query": "laptop under $1500",
+      "intent": "price_filter",
+      "expected_products": [
+        "ASUS ZenBook 14 UX3402"
+      ],
+      "expected_blocked": false,
+      "price_max": 1439.3390000000002,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_168",
+        "prod_361",
+        "prod_038"
+      ],
+      "notes": "This query tests the user's intent to find a laptop within a specific price range."
+    },
+    {
+      "query": "Looking for a tablet for watching movies and reading books at home.",
+      "intent": "recommendation",
+      "expected_products": [
+        "Samsung Galaxy Tab S9 FE"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_382",
+        "prod_303",
+        "prod_180"
+      ],
+      "notes": "This query tests the recommendation intent for a specific use case involving a tablet."
+    },
+    {
+      "query": "Looking for a lightweight bag for my travels, any suggestions?",
+      "intent": "recommendation",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_055",
+        "prod_044",
+        "prod_252"
+      ],
+      "notes": "This query tests for a recommendation based on travel needs."
+    },
+    {
+      "query": "how are you?",
+      "intent": "off_topic",
+      "expected_products": [],
+      "expected_blocked": true,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [],
+      "notes": "Should be blocked by intent gate; answer should be off-topic message"
+    },
+    {
+      "query": "Looking for a durable basketball for my kids' practice",
+      "intent": "recommendation",
+      "expected_products": [
+        "Spalding Rookie Gear Youth Basketball"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_070",
+        "prod_011",
+        "prod_209"
+      ],
+      "notes": "This query tests the recommendation intent type by describing a use case."
+    },
+    {
+      "query": "Need a comfy chair for long study sessions at home.",
+      "intent": "recommendation",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_252",
+        "prod_393",
+        "prod_360"
+      ],
+      "notes": "This query tests for a recommendation based on a use case."
+    },
+    {
+      "query": "TCL C835 Mini LED 65 inch টিভি কি স্টকে আছে?",
+      "intent": "availability",
+      "expected_products": [
+        "TCL C835 Mini LED 65 inch"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_105"
+      ],
+      "notes": "This query checks if a specific product is available in stock."
+    },
+    {
+      "query": "Is the Dell Inspiron 15 3520 available in stock?",
+      "intent": "availability",
+      "expected_products": [
+        "Dell Inspiron 15 3520"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_372"
+      ],
+      "notes": "This query tests the user's inquiry about the stock status of a specific product."
+    },
+    {
+      "query": "what time is it?",
+      "intent": "off_topic",
+      "expected_products": [],
+      "expected_blocked": true,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [],
+      "notes": "Should be blocked by intent gate; answer should be off-topic message"
+    },
+    {
+      "query": "write a poem about rain",
+      "intent": "off_topic",
+      "expected_products": [],
+      "expected_blocked": true,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [],
+      "notes": "Should be blocked by intent gate; answer should be off-topic message"
+    },
+    {
+      "query": "Corsair K70 RGB Keyboard",
+      "intent": "exact_lookup",
+      "expected_products": [
+        "Corsair K70 RGB Keyboard"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_343"
+      ],
+      "notes": "This query tests for an exact product lookup based on the product name."
+    },
+    {
+      "query": "Show me shoes under 300 taka",
+      "intent": "price_filter",
+      "expected_products": [
+        "New Balance 574 Classic",
+        "Adidas Forum Low"
+      ],
+      "expected_blocked": false,
+      "price_max": 739.1890000000001,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_289",
+        "prod_290",
+        "prod_305"
+      ],
+      "notes": "This query tests the price filter intent for footwear."
+    },
+    {
+      "query": "thanks for your help",
+      "intent": "off_topic",
+      "expected_products": [],
+      "expected_blocked": true,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [],
+      "notes": "Should be blocked by intent gate; answer should be off-topic message"
+    },
+    {
+      "query": "Should I get the Flexispot E7Q desk or the Breville Barista Express?",
+      "intent": "comparison",
+      "expected_products": [
+        "Flexispot E7Q Quad Motor Desk",
+        "Breville Barista Express"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_289",
+        "prod_360"
+      ],
+      "notes": "This query tests the user's intent to compare two different product types."
+    },
+    {
+      "query": "Does the Nike React Infinity Run have good arch support?",
+      "intent": "feature_search",
+      "expected_products": [
+        "Nike React Infinity Run"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_395",
+        "prod_700",
+        "prod_222"
+      ],
+      "notes": "This query tests the user's interest in a specific feature of the shoe."
+    },
+    {
+      "query": "what is machine learning?",
+      "intent": "off_topic",
+      "expected_products": [],
+      "expected_blocked": true,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [],
+      "notes": "Should be blocked by intent gate; answer should be off-topic message"
+    },
+    {
+      "query": "Does the Google Nest Cam Outdoor have night vision features?",
+      "intent": "feature_search",
+      "expected_products": [
+        "Google Nest Cam Outdoor"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_233",
+        "prod_361",
+        "prod_188"
+      ],
+      "notes": "This query tests for specific feature inquiries related to a smart home product."
+    },
+    {
+      "query": "Looking for a sturdy bag for daily commuting and laptop storage",
+      "intent": "recommendation",
+      "expected_products": [
+        "Samsonite Crossover 15.6 Backpack"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_136",
+        "prod_214",
+        "prod_275"
+      ],
+      "notes": "This query tests the recommendation intent for a commuter bag."
+    },
+    {
+      "query": "Need a good mascara for a natural look to wear daily!",
+      "intent": "recommendation",
+      "expected_products": [
+        "Maybelline Sky High Mascara"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_179",
+        "prod_395",
+        "prod_059"
+      ],
+      "notes": "This query tests the recommendation intent by describing a use case for mascara."
+    },
+    {
+      "query": "Does the Fitbit Charge 6 have heart rate monitoring?",
+      "intent": "feature_search",
+      "expected_products": [
+        "Fitbit Charge 6"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_253",
+        "prod_261",
+        "prod_382"
+      ],
+      "notes": "This query tests the search for a specific feature of the Fitbit Charge 6."
+    },
+    {
+      "query": "How does the Huawei Watch GT 4 compare to the Panasonic Bread Maker?",
+      "intent": "comparison",
+      "expected_products": [
+        "Huawei Watch GT 4",
+        "Panasonic Bread Maker SD-YR2540"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_094",
+        "prod_173"
+      ],
+      "notes": "This query tests the user's interest in comparing two unrelated products."
+    },
+    {
+      "query": "Looking for a good serum for reducing fine lines and wrinkles.",
+      "intent": "recommendation",
+      "expected_products": [
+        "Neutrogena Rapid Wrinkle Repair Serum"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_113",
+        "prod_024",
+        "prod_252"
+      ],
+      "notes": "This query tests the recommendation intent for a skincare product."
+    },
+    {
+      "query": "Looking for a smartwatch to track my workouts and heart rate.",
+      "intent": "recommendation",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_089",
+        "prod_198",
+        "prod_317"
+      ],
+      "notes": "This query tests the recommendation intent for a fitness tracking watch."
+    },
+    {
+      "query": "Show me all sports equipment available",
+      "intent": "browse",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_055",
+        "prod_180",
+        "prod_070"
+      ],
+      "notes": "This query tests the browsing intent for sports category products."
+    },
+    {
+      "query": "Show me products under 300 taka",
+      "intent": "price_filter",
+      "expected_products": [
+        "Microsoft Xbox Wireless Headset",
+        "Yonex Voltric Z-Force II"
+      ],
+      "expected_blocked": false,
+      "price_max": 756.7560000000001,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_264",
+        "prod_338",
+        "prod_055"
+      ],
+      "notes": "This query tests the price filtering capability based on product prices."
+    },
+    {
+      "query": "Does the Xbox headset have noise cancellation?",
+      "intent": "feature_search",
+      "expected_products": [
+        "Microsoft Xbox Wireless Headset"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_264",
+        "prod_702",
+        "prod_275"
+      ],
+      "notes": "This query tests for a specific feature of the gaming headset."
+    },
+    {
+      "query": "Looking for a fun gift for my kid's birthday party.",
+      "intent": "recommendation",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_188",
+        "prod_264",
+        "prod_289"
+      ],
+      "notes": "This query tests for a recommendation based on use case."
+    },
+    {
+      "query": "Need a laptop for coding and design work, any recommendations?",
+      "intent": "recommendation",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_372",
+        "prod_168",
+        "prod_352"
+      ],
+      "notes": "This query tests the recommendation intent for laptops suitable for professionals."
+    },
+    {
+      "query": "show me all smartphones",
+      "intent": "browse",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_102",
+        "prod_702",
+        "prod_257"
+      ],
+      "notes": "This query tests the browsing capability for smartphone products."
+    },
+    {
+      "query": "Show me products under 300 Taka",
+      "intent": "price_filter",
+      "expected_products": [
+        "Yonex Voltric Z-Force II",
+        "Skechers Max Cushioning Elite"
+      ],
+      "expected_blocked": false,
+      "price_max": 1319.989,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_055",
+        "prod_700",
+        "prod_314"
+      ],
+      "notes": "This query tests the price filter intent."
+    },
+    {
+      "query": "GoPro Hero 11 Mini",
+      "intent": "exact_lookup",
+      "expected_products": [
+        "GoPro Hero 11 Mini"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_351"
+      ],
+      "notes": "This query tests if the search can match an exact product name."
+    },
+    {
+      "query": "bye bye",
+      "intent": "off_topic",
+      "expected_products": [],
+      "expected_blocked": true,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [],
+      "notes": "Should be blocked by intent gate; answer should be off-topic message"
+    },
+    {
+      "query": "Need a good shoe for gym and casual wear, any recommendations?",
+      "intent": "recommendation",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_403",
+        "prod_289",
+        "prod_017"
+      ],
+      "notes": "This query tests the ability to suggest products for specific use cases."
+    },
+    {
+      "query": "Should I get the Hasbro Nerf Elite 2.0 Commander or the TCL C835 Mini LED 65 inch?",
+      "intent": "comparison",
+      "expected_products": [
+        "Hasbro Nerf Elite 2.0 Commander",
+        "TCL C835 Mini LED 65 inch"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_188",
+        "prod_105"
+      ],
+      "notes": "This query tests the comparison intent by asking about two different product types."
+    },
+    {
+      "query": "Is the Yonex Voltric Z-Force II available in stock?",
+      "intent": "availability",
+      "expected_products": [
+        "Yonex Voltric Z-Force II"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_055"
+      ],
+      "notes": "This query tests the user's inquiry about product availability."
+    },
+    {
+      "query": "Does the Logitech G305 have customizable buttons?",
+      "intent": "feature_search",
+      "expected_products": [
+        "Logitech G305 Wireless Mouse"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_291",
+        "prod_338",
+        "prod_403"
+      ],
+      "notes": "This query tests the search for a specific feature of a product."
+    },
+    {
+      "query": "Does the Fitbit Charge 6 have heart rate monitoring?",
+      "intent": "feature_search",
+      "expected_products": [
+        "Fitbit Charge 6"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_168",
+        "prod_338",
+        "prod_253"
+      ],
+      "notes": "This query tests for a specific feature of the Fitbit Charge 6."
+    },
+    {
+      "query": "Is the Samsung Galaxy Tab A9 available in stock?",
+      "intent": "availability",
+      "expected_products": [
+        "Samsung Galaxy Tab A9"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_024"
+      ],
+      "notes": "This query tests the availability of a specific product."
+    },
+    {
+      "query": "Show me all furniture products",
+      "intent": "browse",
+      "expected_products": [],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_331",
+        "prod_289",
+        "prod_165"
+      ],
+      "notes": "This query tests the browsing intent for furniture category."
+    },
+    {
+      "query": "Should I get the Samsung Galaxy Watch 5 Pro or the Flexispot E7Q desk?",
+      "intent": "comparison",
+      "expected_products": [
+        "Samsung Galaxy Watch 5 Pro",
+        "Flexispot E7Q Quad Motor Desk"
+      ],
+      "expected_blocked": false,
+      "price_max": null,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_067",
+        "prod_289"
+      ],
+      "notes": "This query tests the user's intent to compare two different product categories."
+    },
+    {
+      "query": "Show me products under 100 dollars",
+      "intent": "price_filter",
+      "expected_products": [
+        "Nivea Sun Protect & Moisture SPF50"
+      ],
+      "expected_blocked": false,
+      "price_max": 318.20799999999997,
+      "budget_qualifier": null,
+      "source_product_ids": [
+        "prod_044",
+        "prod_055",
+        "prod_156"
+      ],
+      "notes": "This query tests for filtering products based on price constraints."
+    }
+  ]
+}
